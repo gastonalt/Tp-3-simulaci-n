@@ -1,0 +1,2 @@
+seed,arrival_rate,service_rate,rho,simulation_time,queue_capacity,total_arrivals,accepted_arrivals,rejected_arrivals,completed_customers,average_number_in_system,average_number_in_queue,average_time_in_system,average_time_in_queue,server_utilization,denial_probability
+20260626,12.5,10.0,1.25,1000.0,2,12596,8168,4428,8166,1.8181847528638158,0.9786850842256257,0.22262649659825637,0.11983217326713855,0.8394996686381936,0.3515401714830105
