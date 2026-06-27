@@ -6,7 +6,8 @@
     "queue_capacities": [null, 0, 2, 5, 10, 50],
     "simulation_time": 10000.0,
     "replications": 10,
-    "base_seed": 20260626
+    "base_seed": 20260626,
+    "max_queue_probability_length": 20
   },
   "inventory": {
     "time_unit": "days",

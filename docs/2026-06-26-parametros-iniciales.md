@@ -199,7 +199,7 @@ Esta prueba confirma que la rama de cola finita calcula rechazos y que el modelo
 
 ## Pendientes inmediatos
 
-1. Crear un runner de experimentos completos para todas las tasas de arribo y capacidades de cola.
-2. Agregar resumen estadistico de 10 corridas por experimento.
-3. Generar graficos de `M/M/1`.
-4. Empezar a preparar la seccion LaTeX de marco teorico `M/M/1`.
+1. Revisar visualmente los graficos SVG generados para `M/M/1`.
+2. Preparar tablas LaTeX a partir de `results/mm1/experiments/mm1_summary_long.csv`.
+3. Empezar a preparar la seccion LaTeX de marco teorico `M/M/1`.
+4. Empezar la implementacion del modelo de inventario.
