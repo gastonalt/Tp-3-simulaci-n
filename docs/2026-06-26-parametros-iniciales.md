@@ -38,7 +38,7 @@ Politica elegida:
 
 - Revision continua `(Q, r)`.
 - Cuando la posicion de inventario cae a `r`, se emite una orden de cantidad fija `Q`.
-- La orden llega luego de un lead time fijo inicial de `3 dias`.
+- La orden llega luego de un tiempo de entrega fijo inicial de `3 dias`.
 
 Parametros iniciales:
 
@@ -55,14 +55,14 @@ Politicas iniciales para comparar:
 
 | Politica | Q | r | Intencion |
 | --- | ---: | ---: | --- |
-| `low_inventory` | 80 | 45 | Menor inventario promedio, mayor riesgo de faltantes |
-| `balanced` | 120 | 70 | Punto medio entre mantenimiento y faltantes |
-| `high_service` | 160 | 95 | Mayor nivel de servicio, mayor costo de mantenimiento |
+| `bajo_inventario` | 80 | 45 | Menor inventario promedio, mayor riesgo de faltantes |
+| `balanceada` | 120 | 70 | Punto medio entre mantenimiento y faltantes |
+| `alto_servicio` | 160 | 95 | Mayor nivel de servicio, mayor costo de mantenimiento |
 
 Justificacion:
 
 - La demanda Poisson es razonable para representar pedidos discretos diarios.
-- El lead time de `3 dias` fuerza a que el punto de reorden sea relevante.
+- El tiempo de entrega de `3 dias` fuerza a que el punto de reorden sea relevante.
 - Las tres politicas permiten observar el trade-off central del modelo: mantener stock cuesta, pero quedarse sin stock tambien.
 
 ## Estructura creada
@@ -123,7 +123,7 @@ results/mm1/mm1_single_timeseries.csv
 Si solo se quieren metricas finales y probabilidades de longitud de cola, sin serie temporal:
 
 ```bash
-python -m src.mm1.run_single --no-time-series
+python -m src.mm1.run_single --sin-serie-temporal
 ```
 
 ## Validacion inicial ejecutada
@@ -161,7 +161,7 @@ La diferencia es razonable para una corrida individual. La comparacion formal de
 Tambien se ejecuto una prueba corta con serie temporal:
 
 ```bash
-python -m src.mm1.run_single --simulation-time 100 --output-dir results/mm1/smoke_timeseries
+python -m src.mm1.run_single --tiempo-simulacion 100 --directorio-salida results/mm1/smoke_timeseries
 ```
 
 Archivos generados:
@@ -173,7 +173,7 @@ Archivos generados:
 Y una prueba de cola finita con rechazos:
 
 ```bash
-python -m src.mm1.run_single --arrival-factor 1.25 --queue-capacity 2 --simulation-time 1000 --output-dir results/mm1/smoke_finite --no-time-series
+python -m src.mm1.run_single --factor-arribo 1.25 --capacidad-cola 2 --tiempo-simulacion 1000 --directorio-salida results/mm1/smoke_finite --sin-serie-temporal
 ```
 
 Parametros:

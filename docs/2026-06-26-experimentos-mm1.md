@@ -32,11 +32,11 @@ Entonces:
 - Esos casos igual pueden simularse por horizonte finito, pero no deben compararse contra formulas estacionarias.
 - En cola finita `M/M/1/K`, los casos `rho = 1.00` y `1.25` si tienen estado estacionario, porque la capacidad limitada bloquea arribos y evita crecimiento infinito.
 
-El workaround adoptado en el codigo es mantener todos los casos pedidos por el enunciado, pero etiquetar cada experimento con una columna `theoretical_status`:
+El criterio adoptado en el codigo es mantener todos los casos pedidos por el enunciado, pero etiquetar cada experimento con una columna `estado_teorico`:
 
-- `infinite_capacity_steady_state`
-- `infinite_capacity_unstable_no_steady_state`
-- `finite_capacity_steady_state`
+- `capacidad_infinita_regimen_estacionario`
+- `capacidad_infinita_sin_regimen_estacionario`
+- `capacidad_finita_regimen_estacionario`
 
 De esta forma no se oculta el problema: queda visible en los CSV, en la documentacion y en la futura interpretacion del informe.
 
@@ -104,14 +104,14 @@ Se generaron:
 
 Columnas importantes:
 
-- `queue_capacity`: `infinite`, `0`, `2`, `5`, `10`, `50`.
-- `queue_model`: `M/M/1` o `M/M/1/K`.
-- `theoretical_status`: indica si existe referencia teorica estacionaria.
-- `mean`: promedio entre corridas.
-- `stdev`: desvio estandar entre corridas.
-- `ci95_half_width`: semiancho del intervalo de confianza 95%.
-- `theory`: valor teorico esperado cuando corresponde.
-- `error_percent`: error porcentual contra teoria cuando corresponde.
+- `capacidad_cola`: `infinita`, `0`, `2`, `5`, `10`, `50`.
+- `modelo_cola`: `M/M/1` o `M/M/1/K`.
+- `estado_teorico`: indica si existe referencia teorica estacionaria.
+- `media`: promedio entre corridas.
+- `desvio_estandar`: desvio estandar entre corridas.
+- `semiancho_ic95`: semiancho del intervalo de confianza 95%.
+- `teoria`: valor teorico esperado cuando corresponde.
+- `error_porcentual`: error porcentual contra teoria cuando corresponde.
 
 ## Graficos generados
 
@@ -140,8 +140,8 @@ Para cola infinita estable, los promedios quedan cerca de la teoria. Por ejemplo
 
 Para cola infinita inestable, la simulacion por horizonte finito produce numeros, pero no se comparan contra teoria estacionaria. En `mm1_summary.csv` se observan:
 
-- `rho = 1.00`, cola infinita: `infinite_capacity_unstable_no_steady_state`.
-- `rho = 1.25`, cola infinita: `infinite_capacity_unstable_no_steady_state`.
+- `rho = 1.00`, cola infinita: `capacidad_infinita_sin_regimen_estacionario`.
+- `rho = 1.25`, cola infinita: `capacidad_infinita_sin_regimen_estacionario`.
 
 Para cola finita, todos los `rho` tienen referencia teorica estacionaria. Esto es lo que permite analizar probabilidad de denegacion de servicio para capacidades `0`, `2`, `5`, `10` y `50`.
 

@@ -1,148 +1,144 @@
-"""Theoretical measures for M/M/1 and finite-capacity M/M/1/K queues."""
+"""Medidas teoricas para colas M/M/1 y M/M/1/K con capacidad finita."""
 
 from __future__ import annotations
 
 from math import isclose
 
 
-def _validate_rates(arrival_rate: float, service_rate: float) -> None:
-    if arrival_rate <= 0:
-        raise ValueError("arrival_rate must be greater than zero")
-    if service_rate <= 0:
-        raise ValueError("service_rate must be greater than zero")
+def _validar_tasas(tasa_arribo: float, tasa_servicio: float) -> None:
+    if tasa_arribo <= 0:
+        raise ValueError("tasa_arribo debe ser mayor que cero")
+    if tasa_servicio <= 0:
+        raise ValueError("tasa_servicio debe ser mayor que cero")
 
 
-def mm1_infinite_theory(
-    arrival_rate: float,
-    service_rate: float,
-    max_queue_length: int = 10,
+def teoria_mm1_infinita(
+    tasa_arribo: float,
+    tasa_servicio: float,
+    max_longitud_cola: int = 10,
 ) -> dict[str, object]:
-    """Return steady-state metrics for an infinite M/M/1 queue.
+    """Devuelve metricas estacionarias para una cola M/M/1 infinita.
 
-    Metrics are only finite when rho < 1. For rho >= 1 the returned
-    dictionary marks the model as unstable and leaves steady-state metrics as
-    None, which is useful for the TP cases lambda = mu and lambda > mu.
+    Las metricas solo son finitas cuando rho < 1. Para rho >= 1, el
+    diccionario marca que no hay regimen estacionario y deja esas metricas en
+    None. Eso permite tratar los casos lambda = mu y lambda > mu pedidos por el
+    TP sin compararlos contra teoria estacionaria.
     """
 
-    _validate_rates(arrival_rate, service_rate)
-    rho = arrival_rate / service_rate
-    stable = rho < 1.0
+    _validar_tasas(tasa_arribo, tasa_servicio)
+    rho = tasa_arribo / tasa_servicio
+    estable = rho < 1.0
 
-    result: dict[str, object] = {
-        "model": "M/M/1",
-        "arrival_rate": arrival_rate,
-        "service_rate": service_rate,
+    resultado: dict[str, object] = {
+        "modelo": "M/M/1",
+        "tasa_arribo": tasa_arribo,
+        "tasa_servicio": tasa_servicio,
         "rho": rho,
-        "stable": stable,
-        "queue_capacity": None,
+        "estable": estable,
+        "capacidad_cola": None,
     }
 
-    if not stable:
-        result.update(
+    if not estable:
+        resultado.update(
             {
-                "average_number_in_system": None,
-                "average_number_in_queue": None,
-                "average_time_in_system": None,
-                "average_time_in_queue": None,
-                "server_utilization": None,
-                "denial_probability": 0.0,
-                "queue_length_probabilities": {},
+                "promedio_clientes_sistema": None,
+                "promedio_clientes_cola": None,
+                "tiempo_promedio_sistema": None,
+                "tiempo_promedio_cola": None,
+                "utilizacion_servidor": None,
+                "probabilidad_denegacion": 0.0,
+                "probabilidades_longitud_cola": {},
             }
         )
-        return result
+        return resultado
 
     p0 = 1.0 - rho
-    queue_length_probabilities = {
+    probabilidades_longitud_cola = {
         0: p0 + p0 * rho,
     }
-    for queue_length in range(1, max_queue_length + 1):
-        queue_length_probabilities[queue_length] = p0 * rho ** (queue_length + 1)
+    for longitud_cola in range(1, max_longitud_cola + 1):
+        probabilidades_longitud_cola[longitud_cola] = p0 * rho ** (longitud_cola + 1)
 
-    result.update(
+    resultado.update(
         {
-            "average_number_in_system": rho / (1.0 - rho),
-            "average_number_in_queue": rho**2 / (1.0 - rho),
-            "average_time_in_system": 1.0 / (service_rate - arrival_rate),
-            "average_time_in_queue": arrival_rate
-            / (service_rate * (service_rate - arrival_rate)),
-            "server_utilization": rho,
-            "denial_probability": 0.0,
-            "queue_length_probabilities": queue_length_probabilities,
+            "promedio_clientes_sistema": rho / (1.0 - rho),
+            "promedio_clientes_cola": rho**2 / (1.0 - rho),
+            "tiempo_promedio_sistema": 1.0 / (tasa_servicio - tasa_arribo),
+            "tiempo_promedio_cola": tasa_arribo
+            / (tasa_servicio * (tasa_servicio - tasa_arribo)),
+            "utilizacion_servidor": rho,
+            "probabilidad_denegacion": 0.0,
+            "probabilidades_longitud_cola": probabilidades_longitud_cola,
         }
     )
-    return result
+    return resultado
 
 
-def mm1k_theory(
-    arrival_rate: float,
-    service_rate: float,
-    queue_capacity: int,
+def teoria_mm1k(
+    tasa_arribo: float,
+    tasa_servicio: float,
+    capacidad_cola: int,
 ) -> dict[str, object]:
-    """Return steady-state metrics for M/M/1/K with finite waiting room.
+    """Devuelve metricas estacionarias para M/M/1/K con sala de espera finita."""
 
-    queue_capacity is the number of customers allowed to wait. The total
-    system capacity is K = queue_capacity + 1 because one customer may be in
-    service.
-    """
+    _validar_tasas(tasa_arribo, tasa_servicio)
+    if capacidad_cola < 0:
+        raise ValueError("capacidad_cola debe ser cero o mayor")
 
-    _validate_rates(arrival_rate, service_rate)
-    if queue_capacity < 0:
-        raise ValueError("queue_capacity must be zero or greater")
-
-    total_capacity = queue_capacity + 1
-    rho = arrival_rate / service_rate
+    capacidad_total = capacidad_cola + 1
+    rho = tasa_arribo / tasa_servicio
 
     if isclose(rho, 1.0):
-        state_probabilities = [
-            1.0 / (total_capacity + 1) for _ in range(total_capacity + 1)
+        probabilidades_estado = [
+            1.0 / (capacidad_total + 1) for _ in range(capacidad_total + 1)
         ]
     else:
-        p0 = (1.0 - rho) / (1.0 - rho ** (total_capacity + 1))
-        state_probabilities = [
-            p0 * rho**state for state in range(total_capacity + 1)
+        p0 = (1.0 - rho) / (1.0 - rho ** (capacidad_total + 1))
+        probabilidades_estado = [
+            p0 * rho**estado for estado in range(capacidad_total + 1)
         ]
 
-    denial_probability = state_probabilities[total_capacity]
-    effective_arrival_rate = arrival_rate * (1.0 - denial_probability)
-    average_number_in_system = sum(
-        state * probability
-        for state, probability in enumerate(state_probabilities)
+    probabilidad_denegacion = probabilidades_estado[capacidad_total]
+    tasa_arribo_efectiva = tasa_arribo * (1.0 - probabilidad_denegacion)
+    promedio_clientes_sistema = sum(
+        estado * probabilidad
+        for estado, probabilidad in enumerate(probabilidades_estado)
     )
-    average_number_in_queue = sum(
-        max(state - 1, 0) * probability
-        for state, probability in enumerate(state_probabilities)
+    promedio_clientes_cola = sum(
+        max(estado - 1, 0) * probabilidad
+        for estado, probabilidad in enumerate(probabilidades_estado)
     )
 
-    if effective_arrival_rate > 0.0:
-        average_time_in_system = average_number_in_system / effective_arrival_rate
-        average_time_in_queue = average_number_in_queue / effective_arrival_rate
+    if tasa_arribo_efectiva > 0.0:
+        tiempo_promedio_sistema = promedio_clientes_sistema / tasa_arribo_efectiva
+        tiempo_promedio_cola = promedio_clientes_cola / tasa_arribo_efectiva
     else:
-        average_time_in_system = None
-        average_time_in_queue = None
+        tiempo_promedio_sistema = None
+        tiempo_promedio_cola = None
 
-    queue_length_probabilities = {
-        0: state_probabilities[0] + state_probabilities[1],
+    probabilidades_longitud_cola = {
+        0: probabilidades_estado[0] + probabilidades_estado[1],
     }
-    for queue_length in range(1, queue_capacity + 1):
-        queue_length_probabilities[queue_length] = state_probabilities[
-            queue_length + 1
+    for longitud_cola in range(1, capacidad_cola + 1):
+        probabilidades_longitud_cola[longitud_cola] = probabilidades_estado[
+            longitud_cola + 1
         ]
 
     return {
-        "model": "M/M/1/K",
-        "arrival_rate": arrival_rate,
-        "service_rate": service_rate,
+        "modelo": "M/M/1/K",
+        "tasa_arribo": tasa_arribo,
+        "tasa_servicio": tasa_servicio,
         "rho": rho,
-        "stable": True,
-        "queue_capacity": queue_capacity,
-        "total_system_capacity": total_capacity,
-        "state_probabilities": state_probabilities,
-        "queue_length_probabilities": queue_length_probabilities,
-        "denial_probability": denial_probability,
-        "effective_arrival_rate": effective_arrival_rate,
-        "average_number_in_system": average_number_in_system,
-        "average_number_in_queue": average_number_in_queue,
-        "average_time_in_system": average_time_in_system,
-        "average_time_in_queue": average_time_in_queue,
-        "server_utilization": 1.0 - state_probabilities[0],
+        "estable": True,
+        "capacidad_cola": capacidad_cola,
+        "capacidad_total_sistema": capacidad_total,
+        "probabilidades_estado": probabilidades_estado,
+        "probabilidades_longitud_cola": probabilidades_longitud_cola,
+        "probabilidad_denegacion": probabilidad_denegacion,
+        "tasa_arribo_efectiva": tasa_arribo_efectiva,
+        "promedio_clientes_sistema": promedio_clientes_sistema,
+        "promedio_clientes_cola": promedio_clientes_cola,
+        "tiempo_promedio_sistema": tiempo_promedio_sistema,
+        "tiempo_promedio_cola": tiempo_promedio_cola,
+        "utilizacion_servidor": 1.0 - probabilidades_estado[0],
     }

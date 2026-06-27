@@ -1,55 +1,51 @@
-"""Statistics helpers for independent simulation replications."""
+"""Ayudantes estadisticos para replicas independientes de simulacion."""
 
 from __future__ import annotations
 
 import math
 
 
-def mean(values: list[float]) -> float | None:
-    clean_values = _clean(values)
-    if not clean_values:
+def media(valores: list[float]) -> float | None:
+    valores_limpios = _limpiar(valores)
+    if not valores_limpios:
         return None
-    return sum(clean_values) / len(clean_values)
+    return sum(valores_limpios) / len(valores_limpios)
 
 
-def sample_stdev(values: list[float]) -> float | None:
-    clean_values = _clean(values)
-    n = len(clean_values)
+def desvio_estandar_muestral(valores: list[float]) -> float | None:
+    valores_limpios = _limpiar(valores)
+    n = len(valores_limpios)
     if n < 2:
         return None
 
-    avg = sum(clean_values) / n
-    variance = sum((value - avg) ** 2 for value in clean_values) / (n - 1)
-    return math.sqrt(variance)
+    promedio = sum(valores_limpios) / n
+    varianza = sum((valor - promedio) ** 2 for valor in valores_limpios) / (n - 1)
+    return math.sqrt(varianza)
 
 
-def confidence_interval_half_width(
-    values: list[float],
-    confidence: float = 0.95,
+def semiancho_intervalo_confianza(
+    valores: list[float],
+    confianza: float = 0.95,
 ) -> float | None:
-    if confidence != 0.95:
-        raise ValueError("only 95 percent confidence intervals are supported")
+    if confianza != 0.95:
+        raise ValueError("solo se soportan intervalos de confianza del 95 por ciento")
 
-    clean_values = _clean(values)
-    n = len(clean_values)
+    valores_limpios = _limpiar(valores)
+    n = len(valores_limpios)
     if n < 2:
         return None
 
-    stdev = sample_stdev(clean_values)
-    if stdev is None:
+    desvio = desvio_estandar_muestral(valores_limpios)
+    if desvio is None:
         return None
 
-    return t_critical_975(n - 1) * stdev / math.sqrt(n)
+    return t_critico_975(n - 1) * desvio / math.sqrt(n)
 
 
-def t_critical_975(degrees_of_freedom: int) -> float:
-    """Return two-sided 95 percent t critical value.
+def t_critico_975(grados_libertad: int) -> float:
+    """Devuelve el valor critico t bilateral para 95 por ciento."""
 
-    Exact table values are included for the small samples used in the TP. For
-    larger sample sizes, the normal approximation is enough for reporting.
-    """
-
-    table = {
+    tabla = {
         1: 12.706,
         2: 4.303,
         3: 3.182,
@@ -81,20 +77,20 @@ def t_critical_975(degrees_of_freedom: int) -> float:
         29: 2.045,
         30: 2.042,
     }
-    return table.get(degrees_of_freedom, 1.96)
+    return tabla.get(grados_libertad, 1.96)
 
 
-def percent_error(observed: float | None, expected: float | None) -> float | None:
-    if observed is None or expected is None:
+def error_porcentual(observado: float | None, esperado: float | None) -> float | None:
+    if observado is None or esperado is None:
         return None
-    if abs(expected) < 1e-12:
-        return 0.0 if abs(observed) < 1e-12 else None
-    return 100.0 * (observed - expected) / expected
+    if abs(esperado) < 1e-12:
+        return 0.0 if abs(observado) < 1e-12 else None
+    return 100.0 * (observado - esperado) / esperado
 
 
-def _clean(values: list[float]) -> list[float]:
+def _limpiar(valores: list[float]) -> list[float]:
     return [
-        value
-        for value in values
-        if value is not None and not math.isnan(value)
+        valor
+        for valor in valores
+        if valor is not None and not math.isnan(valor)
     ]

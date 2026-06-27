@@ -1,13 +1,13 @@
-"""Generate initial SVG charts for M/M/1 experiment summaries."""
+"""Genera graficos SVG para los resumenes de experimentos M/M/1."""
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
 
-from src.common.csv_utils import read_rows_csv
+from src.common.csv_utils import leer_filas_csv
 
-COLORS = [
+COLORES = [
     "#1f77b4",
     "#d62728",
     "#2ca02c",
@@ -16,413 +16,425 @@ COLORS = [
     "#17becf",
 ]
 
-METRIC_LABELS = {
-    "average_number_in_system": "Average customers in system",
-    "average_number_in_queue": "Average customers in queue",
-    "average_time_in_system": "Average time in system",
-    "average_time_in_queue": "Average time in queue",
-    "server_utilization": "Server utilization",
+ETIQUETAS_METRICAS = {
+    "promedio_clientes_sistema": "Clientes promedio en sistema",
+    "promedio_clientes_cola": "Clientes promedio en cola",
+    "tiempo_promedio_sistema": "Tiempo promedio en sistema",
+    "tiempo_promedio_cola": "Tiempo promedio en cola",
+    "utilizacion_servidor": "Utilizacion del servidor",
+}
+
+NOMBRES_ARCHIVO_METRICAS = {
+    "promedio_clientes_sistema": "average_number_in_system",
+    "promedio_clientes_cola": "average_number_in_queue",
+    "tiempo_promedio_sistema": "average_time_in_system",
+    "tiempo_promedio_cola": "average_time_in_queue",
+    "utilizacion_servidor": "server_utilization",
 }
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Plot M/M/1 experiment results.")
+def principal() -> None:
+    parser = argparse.ArgumentParser(description="Grafica resultados de experimentos M/M/1.")
     parser.add_argument(
         "--input-dir",
+        "--directorio-entrada",
+        dest="directorio_entrada",
         default="results/mm1/experiments",
-        help="Directory containing mm1_summary.csv.",
+        help="Directorio que contiene mm1_summary.csv.",
     )
     parser.add_argument(
         "--output-dir",
+        "--directorio-salida",
+        dest="directorio_salida",
         default="figures/mm1",
-        help="Directory where SVG figures will be written.",
+        help="Directorio donde se escriben las figuras SVG.",
     )
-    args = parser.parse_args()
+    argumentos = parser.parse_args()
 
-    input_dir = Path(args.input_dir)
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    directorio_entrada = Path(argumentos.directorio_entrada)
+    directorio_salida = Path(argumentos.directorio_salida)
+    directorio_salida.mkdir(parents=True, exist_ok=True)
 
-    summary_rows = read_rows_csv(input_dir / "mm1_summary.csv")
-    _plot_infinite_queue_metrics(summary_rows, output_dir)
-    _plot_denial_probability(summary_rows, output_dir)
+    filas_resumen = leer_filas_csv(directorio_entrada / "mm1_summary.csv")
+    _graficar_metricas_cola_infinita(filas_resumen, directorio_salida)
+    _graficar_probabilidad_denegacion(filas_resumen, directorio_salida)
 
-    print("M/M/1 figures generated")
-    print(f"  output directory: {output_dir}")
+    print("Figuras M/M/1 generadas")
+    print(f"  directorio de salida: {directorio_salida}")
 
 
-def _plot_infinite_queue_metrics(
-    summary_rows: list[dict[str, str]],
-    output_dir: Path,
+def _graficar_metricas_cola_infinita(
+    filas_resumen: list[dict[str, str]],
+    directorio_salida: Path,
 ) -> None:
-    rows = [
-        row
-        for row in summary_rows
-        if row["queue_capacity"] == "infinite"
-        and row["theoretical_status"] == "infinite_capacity_steady_state"
+    filas = [
+        fila
+        for fila in filas_resumen
+        if fila["capacidad_cola"] == "infinita"
+        and fila["estado_teorico"] == "capacidad_infinita_regimen_estacionario"
     ]
-    rows.sort(key=lambda row: _to_float(row["rho"]) or 0.0)
+    filas.sort(key=lambda fila: _a_float(fila["rho"]) or 0.0)
 
-    for metric, label in METRIC_LABELS.items():
-        simulation_points = [
-            (_to_float(row["rho"]), _to_float(row[f"{metric}_mean"]))
-            for row in rows
+    for metrica, etiqueta in ETIQUETAS_METRICAS.items():
+        puntos_simulacion = [
+            (_a_float(fila["rho"]), _a_float(fila[f"{metrica}_media"]))
+            for fila in filas
         ]
-        theory_points = [
-            (_to_float(row["rho"]), _to_float(row[f"{metric}_theory"]))
-            for row in rows
+        puntos_teoria = [
+            (_a_float(fila["rho"]), _a_float(fila[f"{metrica}_teoria"]))
+            for fila in filas
         ]
-        _write_xy_line_chart(
+        _escribir_grafico_lineas_xy(
             [
                 {
-                    "label": "Simulation mean",
-                    "points": _valid_points(simulation_points),
-                    "color": COLORS[0],
-                    "dash": "",
+                    "etiqueta": "Media simulada",
+                    "puntos": _puntos_validos(puntos_simulacion),
+                    "color": COLORES[0],
+                    "guiones": "",
                 },
                 {
-                    "label": "Theory",
-                    "points": _valid_points(theory_points),
-                    "color": COLORS[1],
-                    "dash": "6 4",
+                    "etiqueta": "Teoria",
+                    "puntos": _puntos_validos(puntos_teoria),
+                    "color": COLORES[1],
+                    "guiones": "6 4",
                 },
             ],
-            output_dir / f"mm1_infinite_{metric}.svg",
-            title=f"M/M/1 infinite queue - {label}",
-            x_label="rho",
-            y_label=label,
+            directorio_salida / f"mm1_infinite_{NOMBRES_ARCHIVO_METRICAS[metrica]}.svg",
+            titulo=f"M/M/1 cola infinita - {etiqueta}",
+            etiqueta_x="rho",
+            etiqueta_y=etiqueta,
         )
 
 
-def _plot_denial_probability(
-    summary_rows: list[dict[str, str]],
-    output_dir: Path,
+def _graficar_probabilidad_denegacion(
+    filas_resumen: list[dict[str, str]],
+    directorio_salida: Path,
 ) -> None:
-    rows = [
-        row
-        for row in summary_rows
-        if row["queue_capacity"] != "infinite"
+    filas = [
+        fila
+        for fila in filas_resumen
+        if fila["capacidad_cola"] != "infinita"
     ]
-    capacities = sorted(
+    capacidades = sorted(
         {
-            int(row["queue_capacity"])
-            for row in rows
+            int(fila["capacidad_cola"])
+            for fila in filas
         }
     )
-    rhos = sorted({_to_float(row["rho"]) for row in rows})
+    rhos = sorted({_a_float(fila["rho"]) for fila in filas})
 
     series = []
-    for index, rho in enumerate(rhos):
-        points = []
-        for capacity in capacities:
-            match = next(
-                row
-                for row in rows
-                if int(row["queue_capacity"]) == capacity
-                and _to_float(row["rho"]) == rho
+    for indice, rho in enumerate(rhos):
+        puntos = []
+        for capacidad in capacidades:
+            coincidencia = next(
+                fila
+                for fila in filas
+                if int(fila["capacidad_cola"]) == capacidad
+                and _a_float(fila["rho"]) == rho
             )
-            points.append(
+            puntos.append(
                 (
-                    str(capacity),
-                    _to_float(match["denial_probability_mean"]),
+                    str(capacidad),
+                    _a_float(coincidencia["probabilidad_denegacion_media"]),
                 )
             )
         series.append(
             {
-                "label": f"rho={rho:g}",
-                "points": _valid_category_points(points),
-                "color": COLORS[index % len(COLORS)],
-                "dash": "",
+                "etiqueta": f"rho={rho:g}",
+                "puntos": _puntos_categoria_validos(puntos),
+                "color": COLORES[indice % len(COLORES)],
+                "guiones": "",
             }
         )
 
-    _write_category_line_chart(
+    _escribir_grafico_lineas_categorias(
         series,
-        output_dir / "mm1_denial_probability_by_capacity.svg",
-        title="M/M/1/K - Denial probability by queue capacity",
-        x_label="Queue capacity",
-        y_label="Denial probability",
-        categories=[str(capacity) for capacity in capacities],
+        directorio_salida / "mm1_denial_probability_by_capacity.svg",
+        titulo="M/M/1/K - Probabilidad de denegacion por capacidad de cola",
+        etiqueta_x="Capacidad de cola",
+        etiqueta_y="Probabilidad de denegacion",
+        categorias=[str(capacidad) for capacidad in capacidades],
     )
 
 
-def _write_xy_line_chart(
+def _escribir_grafico_lineas_xy(
     series: list[dict],
-    path: Path,
-    title: str,
-    x_label: str,
-    y_label: str,
+    ruta: Path,
+    titulo: str,
+    etiqueta_x: str,
+    etiqueta_y: str,
 ) -> None:
-    all_points = [
-        point
-        for item in series
-        for point in item["points"]
+    todos_los_puntos = [
+        punto
+        for serie in series
+        for punto in serie["puntos"]
     ]
-    if not all_points:
+    if not todos_los_puntos:
         return
 
-    x_values = [point[0] for point in all_points]
-    y_values = [point[1] for point in all_points]
-    x_min, x_max = min(x_values), max(x_values)
-    y_min, y_max = 0.0, max(y_values)
+    valores_x = [punto[0] for punto in todos_los_puntos]
+    valores_y = [punto[1] for punto in todos_los_puntos]
+    x_min, x_max = min(valores_x), max(valores_x)
+    y_min, y_max = 0.0, max(valores_y)
     if y_max == y_min:
         y_max = y_min + 1.0
 
-    chart = _Chart(path, title, x_label, y_label)
-    chart.start()
-    chart.axes([f"{value:g}" for value in x_values], y_min, y_max)
-    for item in series:
-        points = [
+    grafico = _Grafico(ruta, titulo, etiqueta_x, etiqueta_y)
+    grafico.comenzar()
+    grafico.dibujar_ejes([f"{valor:g}" for valor in valores_x], y_min, y_max)
+    for serie in series:
+        puntos = [
             (
-                chart.x_scale(point[0], x_min, x_max),
-                chart.y_scale(point[1], y_min, y_max),
+                grafico.escalar_x(punto[0], x_min, x_max),
+                grafico.escalar_y(punto[1], y_min, y_max),
             )
-            for point in item["points"]
+            for punto in serie["puntos"]
         ]
-        chart.line(points, item["color"], item["dash"])
-        chart.points(points, item["color"])
-    chart.legend(series)
-    chart.finish()
+        grafico.dibujar_linea(puntos, serie["color"], serie["guiones"])
+        grafico.dibujar_puntos(puntos, serie["color"])
+    grafico.dibujar_leyenda(series)
+    grafico.finalizar()
 
 
-def _write_category_line_chart(
+def _escribir_grafico_lineas_categorias(
     series: list[dict],
-    path: Path,
-    title: str,
-    x_label: str,
-    y_label: str,
-    categories: list[str],
+    ruta: Path,
+    titulo: str,
+    etiqueta_x: str,
+    etiqueta_y: str,
+    categorias: list[str],
 ) -> None:
-    all_points = [
-        point
-        for item in series
-        for point in item["points"]
+    todos_los_puntos = [
+        punto
+        for serie in series
+        for punto in serie["puntos"]
     ]
-    if not all_points:
+    if not todos_los_puntos:
         return
 
-    y_values = [point[1] for point in all_points]
-    y_min, y_max = 0.0, max(y_values)
+    valores_y = [punto[1] for punto in todos_los_puntos]
+    y_min, y_max = 0.0, max(valores_y)
     if y_max == y_min:
         y_max = y_min + 1.0
 
-    category_positions = {
-        category: index
-        for index, category in enumerate(categories)
+    posiciones_categoria = {
+        categoria: indice
+        for indice, categoria in enumerate(categorias)
     }
-    chart = _Chart(path, title, x_label, y_label)
-    chart.start()
-    chart.axes(categories, y_min, y_max)
-    for item in series:
-        points = [
+    grafico = _Grafico(ruta, titulo, etiqueta_x, etiqueta_y)
+    grafico.comenzar()
+    grafico.dibujar_ejes(categorias, y_min, y_max)
+    for serie in series:
+        puntos = [
             (
-                chart.x_scale(
-                    category_positions[point[0]],
+                grafico.escalar_x(
+                    posiciones_categoria[punto[0]],
                     0,
-                    max(len(categories) - 1, 1),
+                    max(len(categorias) - 1, 1),
                 ),
-                chart.y_scale(point[1], y_min, y_max),
+                grafico.escalar_y(punto[1], y_min, y_max),
             )
-            for point in item["points"]
+            for punto in serie["puntos"]
         ]
-        chart.line(points, item["color"], item["dash"])
-        chart.points(points, item["color"])
-    chart.legend(series)
-    chart.finish()
+        grafico.dibujar_linea(puntos, serie["color"], serie["guiones"])
+        grafico.dibujar_puntos(puntos, serie["color"])
+    grafico.dibujar_leyenda(series)
+    grafico.finalizar()
 
 
-class _Chart:
-    width = 960
-    height = 560
-    left = 86
-    right = 230
-    top = 70
-    bottom = 80
+class _Grafico:
+    ancho = 960
+    alto = 560
+    izquierda = 86
+    derecha = 230
+    arriba = 70
+    abajo = 80
 
-    def __init__(self, path: Path, title: str, x_label: str, y_label: str):
-        self.path = path
-        self.title = title
-        self.x_label = x_label
-        self.y_label = y_label
-        self._parts: list[str] = []
-
-    @property
-    def plot_width(self) -> int:
-        return self.width - self.left - self.right
+    def __init__(self, ruta: Path, titulo: str, etiqueta_x: str, etiqueta_y: str):
+        self.ruta = ruta
+        self.titulo = titulo
+        self.etiqueta_x = etiqueta_x
+        self.etiqueta_y = etiqueta_y
+        self._partes: list[str] = []
 
     @property
-    def plot_height(self) -> int:
-        return self.height - self.top - self.bottom
+    def ancho_trazado(self) -> int:
+        return self.ancho - self.izquierda - self.derecha
 
-    def start(self) -> None:
-        self._parts.append(
+    @property
+    def alto_trazado(self) -> int:
+        return self.alto - self.arriba - self.abajo
+
+    def comenzar(self) -> None:
+        self._partes.append(
             f'<svg xmlns="http://www.w3.org/2000/svg" '
-            f'width="{self.width}" height="{self.height}" '
-            f'viewBox="0 0 {self.width} {self.height}">'
+            f'width="{self.ancho}" height="{self.alto}" '
+            f'viewBox="0 0 {self.ancho} {self.alto}">'
         )
-        self._parts.append('<rect width="100%" height="100%" fill="#ffffff"/>')
-        self._parts.append(
-            f'<text x="{self.width / 2}" y="32" text-anchor="middle" '
+        self._partes.append('<rect width="100%" height="100%" fill="#ffffff"/>')
+        self._partes.append(
+            f'<text x="{self.ancho / 2}" y="32" text-anchor="middle" '
             f'font-family="Arial" font-size="22" font-weight="700">'
-            f'{_escape(self.title)}</text>'
+            f'{_escapar(self.titulo)}</text>'
         )
 
-    def axes(
+    def dibujar_ejes(
         self,
-        x_labels: list[str],
+        etiquetas_x: list[str],
         y_min: float,
         y_max: float,
     ) -> None:
-        left = self.left
-        right = self.width - self.right
-        top = self.top
-        bottom = self.height - self.bottom
+        izquierda = self.izquierda
+        derecha = self.ancho - self.derecha
+        arriba = self.arriba
+        abajo = self.alto - self.abajo
 
-        for index in range(6):
-            fraction = index / 5
-            y = bottom - fraction * self.plot_height
-            value = y_min + fraction * (y_max - y_min)
-            self._parts.append(
-                f'<line x1="{left}" y1="{y:.2f}" x2="{right}" y2="{y:.2f}" '
+        for indice in range(6):
+            fraccion = indice / 5
+            y = abajo - fraccion * self.alto_trazado
+            valor = y_min + fraccion * (y_max - y_min)
+            self._partes.append(
+                f'<line x1="{izquierda}" y1="{y:.2f}" x2="{derecha}" y2="{y:.2f}" '
                 f'stroke="#e6e6e6" stroke-width="1"/>'
             )
-            self._parts.append(
-                f'<text x="{left - 10}" y="{y + 4:.2f}" text-anchor="end" '
-                f'font-family="Arial" font-size="12">{value:.3g}</text>'
+            self._partes.append(
+                f'<text x="{izquierda - 10}" y="{y + 4:.2f}" text-anchor="end" '
+                f'font-family="Arial" font-size="12">{valor:.3g}</text>'
             )
 
-        self._parts.append(
-            f'<line x1="{left}" y1="{bottom}" x2="{right}" y2="{bottom}" '
+        self._partes.append(
+            f'<line x1="{izquierda}" y1="{abajo}" x2="{derecha}" y2="{abajo}" '
             f'stroke="#222" stroke-width="1.5"/>'
         )
-        self._parts.append(
-            f'<line x1="{left}" y1="{top}" x2="{left}" y2="{bottom}" '
+        self._partes.append(
+            f'<line x1="{izquierda}" y1="{arriba}" x2="{izquierda}" y2="{abajo}" '
             f'stroke="#222" stroke-width="1.5"/>'
         )
 
-        labels = _unique_preserve_order(x_labels)
-        for index, label in enumerate(labels):
-            denominator = max(len(labels) - 1, 1)
-            x = left + index / denominator * self.plot_width
-            self._parts.append(
-                f'<text x="{x:.2f}" y="{bottom + 24}" text-anchor="middle" '
-                f'font-family="Arial" font-size="12">{_escape(label)}</text>'
+        etiquetas = _unicos_preservando_orden(etiquetas_x)
+        for indice, etiqueta in enumerate(etiquetas):
+            denominador = max(len(etiquetas) - 1, 1)
+            x = izquierda + indice / denominador * self.ancho_trazado
+            self._partes.append(
+                f'<text x="{x:.2f}" y="{abajo + 24}" text-anchor="middle" '
+                f'font-family="Arial" font-size="12">{_escapar(etiqueta)}</text>'
             )
 
-        self._parts.append(
-            f'<text x="{left + self.plot_width / 2}" y="{self.height - 24}" '
+        self._partes.append(
+            f'<text x="{izquierda + self.ancho_trazado / 2}" y="{self.alto - 24}" '
             f'text-anchor="middle" font-family="Arial" font-size="14">'
-            f'{_escape(self.x_label)}</text>'
+            f'{_escapar(self.etiqueta_x)}</text>'
         )
-        self._parts.append(
-            f'<text x="26" y="{top + self.plot_height / 2}" '
+        self._partes.append(
+            f'<text x="26" y="{arriba + self.alto_trazado / 2}" '
             f'text-anchor="middle" font-family="Arial" font-size="14" '
-            f'transform="rotate(-90 26 {top + self.plot_height / 2})">'
-            f'{_escape(self.y_label)}</text>'
+            f'transform="rotate(-90 26 {arriba + self.alto_trazado / 2})">'
+            f'{_escapar(self.etiqueta_y)}</text>'
         )
 
-    def x_scale(self, value: float, minimum: float, maximum: float) -> float:
-        if maximum == minimum:
-            return self.left + self.plot_width / 2
-        return self.left + (value - minimum) / (maximum - minimum) * self.plot_width
+    def escalar_x(self, valor: float, minimo: float, maximo: float) -> float:
+        if maximo == minimo:
+            return self.izquierda + self.ancho_trazado / 2
+        return self.izquierda + (valor - minimo) / (maximo - minimo) * self.ancho_trazado
 
-    def y_scale(self, value: float, minimum: float, maximum: float) -> float:
+    def escalar_y(self, valor: float, minimo: float, maximo: float) -> float:
         return (
-            self.height
-            - self.bottom
-            - (value - minimum) / (maximum - minimum) * self.plot_height
+            self.alto
+            - self.abajo
+            - (valor - minimo) / (maximo - minimo) * self.alto_trazado
         )
 
-    def line(
+    def dibujar_linea(
         self,
-        points: list[tuple[float, float]],
+        puntos: list[tuple[float, float]],
         color: str,
-        dash: str,
+        guiones: str,
     ) -> None:
-        if len(points) < 2:
+        if len(puntos) < 2:
             return
-        commands = " ".join(f"{x:.2f},{y:.2f}" for x, y in points)
-        dash_attribute = f' stroke-dasharray="{dash}"' if dash else ""
-        self._parts.append(
-            f'<polyline points="{commands}" fill="none" stroke="{color}" '
-            f'stroke-width="2.5"{dash_attribute}/>'
+        comandos = " ".join(f"{x:.2f},{y:.2f}" for x, y in puntos)
+        atributo_guiones = f' stroke-dasharray="{guiones}"' if guiones else ""
+        self._partes.append(
+            f'<polyline points="{comandos}" fill="none" stroke="{color}" '
+            f'stroke-width="2.5"{atributo_guiones}/>'
         )
 
-    def points(self, points: list[tuple[float, float]], color: str) -> None:
-        for x, y in points:
-            self._parts.append(
+    def dibujar_puntos(self, puntos: list[tuple[float, float]], color: str) -> None:
+        for x, y in puntos:
+            self._partes.append(
                 f'<circle cx="{x:.2f}" cy="{y:.2f}" r="4" '
                 f'fill="{color}" stroke="#fff" stroke-width="1"/>'
             )
 
-    def legend(self, series: list[dict]) -> None:
-        x = self.width - self.right + 32
-        y = self.top + 8
-        for index, item in enumerate(series):
-            y_pos = y + index * 24
-            dash_attribute = (
-                f' stroke-dasharray="{item["dash"]}"'
-                if item["dash"]
+    def dibujar_leyenda(self, series: list[dict]) -> None:
+        x = self.ancho - self.derecha + 32
+        y = self.arriba + 8
+        for indice, serie in enumerate(series):
+            y_pos = y + indice * 24
+            atributo_guiones = (
+                f' stroke-dasharray="{serie["guiones"]}"'
+                if serie["guiones"]
                 else ""
             )
-            self._parts.append(
+            self._partes.append(
                 f'<line x1="{x}" y1="{y_pos}" x2="{x + 28}" y2="{y_pos}" '
-                f'stroke="{item["color"]}" stroke-width="2.5"{dash_attribute}/>'
+                f'stroke="{serie["color"]}" stroke-width="2.5"{atributo_guiones}/>'
             )
-            self._parts.append(
+            self._partes.append(
                 f'<text x="{x + 38}" y="{y_pos + 4}" font-family="Arial" '
-                f'font-size="13">{_escape(item["label"])}</text>'
+                f'font-size="13">{_escapar(serie["etiqueta"])}</text>'
             )
 
-    def finish(self) -> None:
-        self._parts.append("</svg>")
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_bytes(("\n".join(self._parts) + "\n").encode("utf-8"))
+    def finalizar(self) -> None:
+        self._partes.append("</svg>")
+        self.ruta.parent.mkdir(parents=True, exist_ok=True)
+        self.ruta.write_bytes(("\n".join(self._partes) + "\n").encode("utf-8"))
 
 
-def _to_float(value: str) -> float | None:
-    if value is None or value == "":
+def _a_float(valor: str) -> float | None:
+    if valor is None or valor == "":
         return None
-    return float(value)
+    return float(valor)
 
 
-def _valid_points(
-    points: list[tuple[float | None, float | None]],
+def _puntos_validos(
+    puntos: list[tuple[float | None, float | None]],
 ) -> list[tuple[float, float]]:
     return [
         (x, y)
-        for x, y in points
+        for x, y in puntos
         if x is not None and y is not None
     ]
 
 
-def _valid_category_points(
-    points: list[tuple[str, float | None]],
+def _puntos_categoria_validos(
+    puntos: list[tuple[str, float | None]],
 ) -> list[tuple[str, float]]:
     return [
         (x, y)
-        for x, y in points
+        for x, y in puntos
         if y is not None
     ]
 
 
-def _unique_preserve_order(values: list[str]) -> list[str]:
-    seen = set()
-    output = []
-    for value in values:
-        if value not in seen:
-            seen.add(value)
-            output.append(value)
-    return output
+def _unicos_preservando_orden(valores: list[str]) -> list[str]:
+    vistos = set()
+    salida = []
+    for valor in valores:
+        if valor not in vistos:
+            vistos.add(valor)
+            salida.append(valor)
+    return salida
 
 
-def _escape(value: str) -> str:
+def _escapar(valor: str) -> str:
     return (
-        value.replace("&", "&amp;")
+        valor.replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
     )
 
 
 if __name__ == "__main__":
-    main()
+    principal()

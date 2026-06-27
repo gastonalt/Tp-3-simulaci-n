@@ -1,4 +1,4 @@
-"""Experiment orchestration and summaries for M/M/1 simulations."""
+"""Orquestacion y resumenes de experimentos para simulaciones M/M/1."""
 
 from __future__ import annotations
 
@@ -8,315 +8,320 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from src.common.csv_utils import write_rows_csv
+from src.common.csv_utils import escribir_filas_csv
 from src.common.statistics import (
-    confidence_interval_half_width,
-    mean,
-    percent_error,
-    sample_stdev,
+    desvio_estandar_muestral,
+    error_porcentual,
+    media,
+    semiancho_intervalo_confianza,
 )
-from src.mm1.simulator import MM1Parameters, MM1Result, simulate_mm1
-from src.mm1.theory import mm1_infinite_theory, mm1k_theory
+from src.mm1.simulator import ParametrosMM1, ResultadoMM1, simular_mm1
+from src.mm1.theory import teoria_mm1_infinita, teoria_mm1k
 
-METRICS = [
-    "average_number_in_system",
-    "average_number_in_queue",
-    "average_time_in_system",
-    "average_time_in_queue",
-    "server_utilization",
-    "denial_probability",
-]
+METRICAS = {
+    "promedio_clientes_sistema": "promedio_clientes_sistema",
+    "promedio_clientes_cola": "promedio_clientes_cola",
+    "tiempo_promedio_sistema": "tiempo_promedio_sistema",
+    "tiempo_promedio_cola": "tiempo_promedio_cola",
+    "utilizacion_servidor": "utilizacion_servidor",
+    "probabilidad_denegacion": "probabilidad_denegacion",
+}
 
 
 @dataclass(frozen=True)
-class ExperimentConfig:
-    service_rate: float
-    arrival_rate_factors: list[float]
-    queue_capacities: list[int | None]
-    simulation_time: float
-    replications: int
-    base_seed: int
-    max_queue_probability_length: int
+class ConfiguracionExperimentos:
+    tasa_servicio: float
+    factores_tasa_arribo: list[float]
+    capacidades_cola: list[int | None]
+    tiempo_simulacion: float
+    replicas: int
+    semilla_base: int
+    max_longitud_probabilidad_cola: int
 
 
-def load_experiment_config(path: str | Path) -> ExperimentConfig:
-    with Path(path).open("r", encoding="utf-8") as config_file:
-        config = json.load(config_file)["mm1"]
+def cargar_configuracion_experimentos(ruta: str | Path) -> ConfiguracionExperimentos:
+    with Path(ruta).open("r", encoding="utf-8") as archivo_configuracion:
+        configuracion = json.load(archivo_configuracion)["mm1"]
 
-    return ExperimentConfig(
-        service_rate=float(config["service_rate"]),
-        arrival_rate_factors=[
-            float(factor) for factor in config["arrival_rate_factors"]
+    return ConfiguracionExperimentos(
+        tasa_servicio=float(configuracion["service_rate"]),
+        factores_tasa_arribo=[
+            float(factor) for factor in configuracion["arrival_rate_factors"]
         ],
-        queue_capacities=config["queue_capacities"],
-        simulation_time=float(config["simulation_time"]),
-        replications=int(config["replications"]),
-        base_seed=int(config["base_seed"]),
-        max_queue_probability_length=int(
-            config.get("max_queue_probability_length", 20)
+        capacidades_cola=configuracion["queue_capacities"],
+        tiempo_simulacion=float(configuracion["simulation_time"]),
+        replicas=int(configuracion["replications"]),
+        semilla_base=int(configuracion["base_seed"]),
+        max_longitud_probabilidad_cola=int(
+            configuracion.get("max_queue_probability_length", 20)
         ),
     )
 
 
-def run_experiments(config: ExperimentConfig) -> list[MM1Result]:
-    results: list[MM1Result] = []
-    for capacity_index, queue_capacity in enumerate(config.queue_capacities):
-        for factor_index, arrival_factor in enumerate(config.arrival_rate_factors):
-            arrival_rate = config.service_rate * arrival_factor
-            for replication in range(config.replications):
-                seed = _replication_seed(
-                    config.base_seed,
-                    capacity_index,
-                    factor_index,
-                    replication,
+def ejecutar_experimentos(configuracion: ConfiguracionExperimentos) -> list[ResultadoMM1]:
+    resultados: list[ResultadoMM1] = []
+    for indice_capacidad, capacidad_cola in enumerate(configuracion.capacidades_cola):
+        for indice_factor, factor_arribo in enumerate(configuracion.factores_tasa_arribo):
+            tasa_arribo = configuracion.tasa_servicio * factor_arribo
+            for replica in range(configuracion.replicas):
+                semilla = _semilla_replica(
+                    configuracion.semilla_base,
+                    indice_capacidad,
+                    indice_factor,
+                    replica,
                 )
-                parameters = MM1Parameters(
-                    arrival_rate=arrival_rate,
-                    service_rate=config.service_rate,
-                    simulation_time=config.simulation_time,
-                    queue_capacity=queue_capacity,
-                    seed=seed,
+                parametros = ParametrosMM1(
+                    tasa_arribo=tasa_arribo,
+                    tasa_servicio=configuracion.tasa_servicio,
+                    tiempo_simulacion=configuracion.tiempo_simulacion,
+                    capacidad_cola=capacidad_cola,
+                    semilla=semilla,
                 )
-                results.append(
-                    simulate_mm1(parameters, record_time_series=False)
+                resultados.append(
+                    simular_mm1(parametros, registrar_serie_temporal=False)
                 )
-    return results
+    return resultados
 
 
-def build_run_rows(results: list[MM1Result]) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    replication_by_experiment: dict[tuple[float, str], int] = defaultdict(int)
-    for result in results:
-        row = result.metrics_row()
-        key = (
-            row["rho"],
-            str(row["queue_capacity"]),
+def construir_filas_corridas(resultados: list[ResultadoMM1]) -> list[dict[str, Any]]:
+    filas: list[dict[str, Any]] = []
+    replica_por_experimento: dict[tuple[float, str], int] = defaultdict(int)
+    for resultado in resultados:
+        fila = resultado.fila_metricas()
+        clave = (
+            fila["rho"],
+            str(fila["capacidad_cola"]),
         )
-        row["arrival_factor"] = row["rho"]
-        row["queue_model"] = _queue_model(result.parameters.queue_capacity)
-        row["replication"] = replication_by_experiment[key]
-        row["theoretical_status"] = _theoretical_status(result.parameters)
-        replication_by_experiment[key] += 1
-        rows.append(row)
-    return rows
+        fila["factor_arribo"] = fila["rho"]
+        fila["modelo_cola"] = _modelo_cola(resultado.parametros.capacidad_cola)
+        fila["replica"] = replica_por_experimento[clave]
+        fila["estado_teorico"] = _estado_teorico(resultado.parametros)
+        replica_por_experimento[clave] += 1
+        filas.append(fila)
+    return filas
 
 
-def build_summary_rows(results: list[MM1Result]) -> tuple[
+def construir_filas_resumen(
+    resultados: list[ResultadoMM1],
+) -> tuple[
     list[dict[str, Any]],
     list[dict[str, Any]],
 ]:
-    groups = _group_results(results)
-    wide_rows: list[dict[str, Any]] = []
-    long_rows: list[dict[str, Any]] = []
+    grupos = _agrupar_resultados(resultados)
+    filas_anchas: list[dict[str, Any]] = []
+    filas_largas: list[dict[str, Any]] = []
 
-    for key, grouped_results in sorted(groups.items(), key=_group_sort_key):
-        arrival_factor, queue_capacity_label = key
-        params = grouped_results[0].parameters
-        theory = theoretical_reference(params)
-        theoretical_status = _theoretical_status(params)
+    for clave, resultados_grupo in sorted(grupos.items(), key=_clave_orden_grupo):
+        factor_arribo, etiqueta_capacidad_cola = clave
+        parametros = resultados_grupo[0].parametros
+        teoria = referencia_teorica(parametros)
+        estado_teorico = _estado_teorico(parametros)
 
-        base_row: dict[str, Any] = {
-            "arrival_factor": arrival_factor,
-            "arrival_rate": params.arrival_rate,
-            "service_rate": params.service_rate,
-            "rho": params.arrival_rate / params.service_rate,
-            "queue_capacity": queue_capacity_label,
-            "queue_model": _queue_model(params.queue_capacity),
-            "simulation_time": params.simulation_time,
-            "replications": len(grouped_results),
-            "theoretical_status": theoretical_status,
+        fila_base: dict[str, Any] = {
+            "factor_arribo": factor_arribo,
+            "tasa_arribo": parametros.tasa_arribo,
+            "tasa_servicio": parametros.tasa_servicio,
+            "rho": parametros.tasa_arribo / parametros.tasa_servicio,
+            "capacidad_cola": etiqueta_capacidad_cola,
+            "modelo_cola": _modelo_cola(parametros.capacidad_cola),
+            "tiempo_simulacion": parametros.tiempo_simulacion,
+            "replicas": len(resultados_grupo),
+            "estado_teorico": estado_teorico,
         }
-        wide_row = dict(base_row)
+        fila_ancha = dict(fila_base)
 
-        for metric in METRICS:
-            values = [
-                getattr(result, metric)
-                for result in grouped_results
-                if getattr(result, metric) is not None
+        for atributo_metrica, columna_metrica in METRICAS.items():
+            valores = [
+                getattr(resultado, atributo_metrica)
+                for resultado in resultados_grupo
+                if getattr(resultado, atributo_metrica) is not None
             ]
-            metric_mean = mean(values)
-            metric_stdev = sample_stdev(values)
-            metric_ci = confidence_interval_half_width(values)
-            theory_value = theory.get(metric)
-            metric_error = percent_error(
-                metric_mean,
-                theory_value if isinstance(theory_value, float) else None,
+            media_metrica = media(valores)
+            desvio_metrica = desvio_estandar_muestral(valores)
+            ic_metrica = semiancho_intervalo_confianza(valores)
+            valor_teorico = teoria.get(columna_metrica)
+            error_metrica = error_porcentual(
+                media_metrica,
+                valor_teorico if isinstance(valor_teorico, float) else None,
             )
 
-            wide_row[f"{metric}_mean"] = metric_mean
-            wide_row[f"{metric}_stdev"] = metric_stdev
-            wide_row[f"{metric}_ci95_half_width"] = metric_ci
-            wide_row[f"{metric}_theory"] = theory_value
-            wide_row[f"{metric}_error_percent"] = metric_error
+            fila_ancha[f"{columna_metrica}_media"] = media_metrica
+            fila_ancha[f"{columna_metrica}_desvio_estandar"] = desvio_metrica
+            fila_ancha[f"{columna_metrica}_semiancho_ic95"] = ic_metrica
+            fila_ancha[f"{columna_metrica}_teoria"] = valor_teorico
+            fila_ancha[f"{columna_metrica}_error_porcentual"] = error_metrica
 
-            long_row = dict(base_row)
-            long_row.update(
+            fila_larga = dict(fila_base)
+            fila_larga.update(
                 {
-                    "metric": metric,
-                    "mean": metric_mean,
-                    "stdev": metric_stdev,
-                    "ci95_half_width": metric_ci,
-                    "theory": theory_value,
-                    "error_percent": metric_error,
+                    "metrica": columna_metrica,
+                    "media": media_metrica,
+                    "desvio_estandar": desvio_metrica,
+                    "semiancho_ic95": ic_metrica,
+                    "teoria": valor_teorico,
+                    "error_porcentual": error_metrica,
                 }
             )
-            long_rows.append(long_row)
+            filas_largas.append(fila_larga)
 
-        wide_rows.append(wide_row)
+        filas_anchas.append(fila_ancha)
 
-    return wide_rows, long_rows
+    return filas_anchas, filas_largas
 
 
-def build_queue_probability_rows(
-    results: list[MM1Result],
-    max_queue_length: int,
+def construir_filas_probabilidades_cola(
+    resultados: list[ResultadoMM1],
+    max_longitud_cola: int,
 ) -> list[dict[str, Any]]:
-    groups = _group_results(results)
-    rows: list[dict[str, Any]] = []
+    grupos = _agrupar_resultados(resultados)
+    filas: list[dict[str, Any]] = []
 
-    for key, grouped_results in sorted(groups.items(), key=_group_sort_key):
-        arrival_factor, queue_capacity_label = key
-        params = grouped_results[0].parameters
-        theory = theoretical_reference(params)
-        theory_probabilities = theory.get("queue_length_probabilities") or {}
+    for clave, resultados_grupo in sorted(grupos.items(), key=_clave_orden_grupo):
+        factor_arribo, etiqueta_capacidad_cola = clave
+        parametros = resultados_grupo[0].parametros
+        teoria = referencia_teorica(parametros)
+        probabilidades_teoricas = teoria.get("probabilidades_longitud_cola") or {}
 
-        queue_lengths = range(0, max_queue_length + 1)
-        for queue_length in queue_lengths:
-            values = [
-                result.queue_length_time_probabilities.get(queue_length, 0.0)
-                for result in grouped_results
+        longitudes_cola = range(0, max_longitud_cola + 1)
+        for longitud_cola in longitudes_cola:
+            valores = [
+                resultado.probabilidades_tiempo_longitud_cola.get(longitud_cola, 0.0)
+                for resultado in resultados_grupo
             ]
-            probability_mean = mean(values)
-            theory_value = (
-                theory_probabilities.get(queue_length)
-                if isinstance(theory_probabilities, dict)
+            probabilidad_media = media(valores)
+            valor_teorico = (
+                probabilidades_teoricas.get(longitud_cola)
+                if isinstance(probabilidades_teoricas, dict)
                 else None
             )
-            rows.append(
+            filas.append(
                 {
-                    "arrival_factor": arrival_factor,
-                    "arrival_rate": params.arrival_rate,
-                    "service_rate": params.service_rate,
-                    "rho": params.arrival_rate / params.service_rate,
-                    "queue_capacity": queue_capacity_label,
-                    "queue_model": _queue_model(params.queue_capacity),
-                    "queue_length": queue_length,
-                    "mean_probability": probability_mean,
-                    "stdev": sample_stdev(values),
-                    "ci95_half_width": confidence_interval_half_width(values),
-                    "theory": theory_value,
-                    "error_percent": percent_error(
-                        probability_mean,
-                        theory_value
-                        if isinstance(theory_value, float)
+                    "factor_arribo": factor_arribo,
+                    "tasa_arribo": parametros.tasa_arribo,
+                    "tasa_servicio": parametros.tasa_servicio,
+                    "rho": parametros.tasa_arribo / parametros.tasa_servicio,
+                    "capacidad_cola": etiqueta_capacidad_cola,
+                    "modelo_cola": _modelo_cola(parametros.capacidad_cola),
+                    "longitud_cola": longitud_cola,
+                    "probabilidad_media": probabilidad_media,
+                    "desvio_estandar": desvio_estandar_muestral(valores),
+                    "semiancho_ic95": semiancho_intervalo_confianza(valores),
+                    "teoria": valor_teorico,
+                    "error_porcentual": error_porcentual(
+                        probabilidad_media,
+                        valor_teorico
+                        if isinstance(valor_teorico, float)
                         else None,
                     ),
-                    "theoretical_status": _theoretical_status(params),
+                    "estado_teorico": _estado_teorico(parametros),
                 }
             )
 
-        tail_values = [
+        valores_cola = [
             sum(
-                probability
-                for queue_length, probability
-                in result.queue_length_time_probabilities.items()
-                if queue_length > max_queue_length
+                probabilidad
+                for longitud, probabilidad
+                in resultado.probabilidades_tiempo_longitud_cola.items()
+                if longitud > max_longitud_cola
             )
-            for result in grouped_results
+            for resultado in resultados_grupo
         ]
-        rows.append(
+        filas.append(
             {
-                "arrival_factor": arrival_factor,
-                "arrival_rate": params.arrival_rate,
-                "service_rate": params.service_rate,
-                "rho": params.arrival_rate / params.service_rate,
-                "queue_capacity": queue_capacity_label,
-                "queue_model": _queue_model(params.queue_capacity),
-                "queue_length": f">{max_queue_length}",
-                "mean_probability": mean(tail_values),
-                "stdev": sample_stdev(tail_values),
-                "ci95_half_width": confidence_interval_half_width(tail_values),
-                "theory": None,
-                "error_percent": None,
-                "theoretical_status": _theoretical_status(params),
+                "factor_arribo": factor_arribo,
+                "tasa_arribo": parametros.tasa_arribo,
+                "tasa_servicio": parametros.tasa_servicio,
+                "rho": parametros.tasa_arribo / parametros.tasa_servicio,
+                "capacidad_cola": etiqueta_capacidad_cola,
+                "modelo_cola": _modelo_cola(parametros.capacidad_cola),
+                "longitud_cola": f">{max_longitud_cola}",
+                "probabilidad_media": media(valores_cola),
+                "desvio_estandar": desvio_estandar_muestral(valores_cola),
+                "semiancho_ic95": semiancho_intervalo_confianza(valores_cola),
+                "teoria": None,
+                "error_porcentual": None,
+                "estado_teorico": _estado_teorico(parametros),
             }
         )
 
-    return rows
+    return filas
 
 
-def theoretical_reference(parameters: MM1Parameters) -> dict[str, Any]:
-    if parameters.queue_capacity is None:
-        return mm1_infinite_theory(
-            parameters.arrival_rate,
-            parameters.service_rate,
+def referencia_teorica(parametros: ParametrosMM1) -> dict[str, Any]:
+    if parametros.capacidad_cola is None:
+        return teoria_mm1_infinita(
+            parametros.tasa_arribo,
+            parametros.tasa_servicio,
         )
-    return mm1k_theory(
-        parameters.arrival_rate,
-        parameters.service_rate,
-        parameters.queue_capacity,
+    return teoria_mm1k(
+        parametros.tasa_arribo,
+        parametros.tasa_servicio,
+        parametros.capacidad_cola,
     )
 
 
-def write_experiment_outputs(
-    results: list[MM1Result],
-    output_dir: str | Path,
-    max_queue_probability_length: int,
+def escribir_salidas_experimentos(
+    resultados: list[ResultadoMM1],
+    directorio_salida: str | Path,
+    max_longitud_probabilidad_cola: int,
 ) -> None:
-    output_path = Path(output_dir)
-    wide_rows, long_rows = build_summary_rows(results)
-    write_rows_csv(build_run_rows(results), output_path / "mm1_runs.csv")
-    write_rows_csv(wide_rows, output_path / "mm1_summary.csv")
-    write_rows_csv(long_rows, output_path / "mm1_summary_long.csv")
-    write_rows_csv(
-        build_queue_probability_rows(results, max_queue_probability_length),
-        output_path / "mm1_queue_probabilities.csv",
+    ruta_salida = Path(directorio_salida)
+    filas_anchas, filas_largas = construir_filas_resumen(resultados)
+    escribir_filas_csv(construir_filas_corridas(resultados), ruta_salida / "mm1_runs.csv")
+    escribir_filas_csv(filas_anchas, ruta_salida / "mm1_summary.csv")
+    escribir_filas_csv(filas_largas, ruta_salida / "mm1_summary_long.csv")
+    escribir_filas_csv(
+        construir_filas_probabilidades_cola(
+            resultados,
+            max_longitud_probabilidad_cola,
+        ),
+        ruta_salida / "mm1_queue_probabilities.csv",
     )
 
 
-def _group_results(
-    results: list[MM1Result],
-) -> dict[tuple[float, str], list[MM1Result]]:
-    groups: dict[tuple[float, str], list[MM1Result]] = defaultdict(list)
-    for result in results:
-        params = result.parameters
-        key = (
-            params.arrival_rate / params.service_rate,
-            _queue_capacity_label(params.queue_capacity),
+def _agrupar_resultados(
+    resultados: list[ResultadoMM1],
+) -> dict[tuple[float, str], list[ResultadoMM1]]:
+    grupos: dict[tuple[float, str], list[ResultadoMM1]] = defaultdict(list)
+    for resultado in resultados:
+        parametros = resultado.parametros
+        clave = (
+            parametros.tasa_arribo / parametros.tasa_servicio,
+            _etiqueta_capacidad_cola(parametros.capacidad_cola),
         )
-        groups[key].append(result)
-    return groups
+        grupos[clave].append(resultado)
+    return grupos
 
 
-def _group_sort_key(
-    item: tuple[tuple[float, str], list[MM1Result]],
+def _clave_orden_grupo(
+    item: tuple[tuple[float, str], list[ResultadoMM1]],
 ) -> tuple[float, int]:
-    (arrival_factor, queue_capacity_label), _ = item
-    if queue_capacity_label == "infinite":
-        return arrival_factor, -1
-    return arrival_factor, int(queue_capacity_label)
+    (factor_arribo, etiqueta_capacidad_cola), _ = item
+    if etiqueta_capacidad_cola == "infinita":
+        return factor_arribo, -1
+    return factor_arribo, int(etiqueta_capacidad_cola)
 
 
-def _queue_capacity_label(queue_capacity: int | None) -> str:
-    return "infinite" if queue_capacity is None else str(queue_capacity)
+def _etiqueta_capacidad_cola(capacidad_cola: int | None) -> str:
+    return "infinita" if capacidad_cola is None else str(capacidad_cola)
 
 
-def _queue_model(queue_capacity: int | None) -> str:
-    return "M/M/1" if queue_capacity is None else "M/M/1/K"
+def _modelo_cola(capacidad_cola: int | None) -> str:
+    return "M/M/1" if capacidad_cola is None else "M/M/1/K"
 
 
-def _theoretical_status(parameters: MM1Parameters) -> str:
-    if parameters.queue_capacity is not None:
-        return "finite_capacity_steady_state"
-    if parameters.arrival_rate < parameters.service_rate:
-        return "infinite_capacity_steady_state"
-    return "infinite_capacity_unstable_no_steady_state"
+def _estado_teorico(parametros: ParametrosMM1) -> str:
+    if parametros.capacidad_cola is not None:
+        return "capacidad_finita_regimen_estacionario"
+    if parametros.tasa_arribo < parametros.tasa_servicio:
+        return "capacidad_infinita_regimen_estacionario"
+    return "capacidad_infinita_sin_regimen_estacionario"
 
 
-def _replication_seed(
-    base_seed: int,
-    capacity_index: int,
-    factor_index: int,
-    replication: int,
+def _semilla_replica(
+    semilla_base: int,
+    indice_capacidad: int,
+    indice_factor: int,
+    replica: int,
 ) -> int:
-    return base_seed + capacity_index * 10000 + factor_index * 100 + replication
+    return semilla_base + indice_capacidad * 10000 + indice_factor * 100 + replica

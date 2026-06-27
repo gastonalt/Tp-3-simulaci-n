@@ -1,6 +1,6 @@
 {
   "mm1": {
-    "time_unit": "hours",
+    "time_unit": "horas",
     "service_rate": 10.0,
     "arrival_rate_factors": [0.25, 0.5, 0.75, 1.0, 1.25],
     "queue_capacities": [null, 0, 2, 5, 10, 50],
@@ -10,8 +10,8 @@
     "max_queue_probability_length": 20
   },
   "inventory": {
-    "time_unit": "days",
-    "policy": "(Q, r)",
+    "time_unit": "dias",
+    "policy": "revision continua (Q, r)",
     "horizon_days": 365,
     "replications": 10,
     "base_seed": 20260626,
@@ -24,17 +24,17 @@
     "shortage_cost_per_unit": 8.0,
     "policies": [
       {
-        "name": "low_inventory",
+        "name": "bajo_inventario",
         "order_quantity": 80,
         "reorder_point": 45
       },
       {
-        "name": "balanced",
+        "name": "balanceada",
         "order_quantity": 120,
         "reorder_point": 70
       },
       {
-        "name": "high_service",
+        "name": "alto_servicio",
         "order_quantity": 160,
         "reorder_point": 95
       }

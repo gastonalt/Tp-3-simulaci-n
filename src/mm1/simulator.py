@@ -1,4 +1,4 @@
-"""Discrete-event simulator for M/M/1 queues."""
+"""Simulador de eventos discretos para colas M/M/1."""
 
 from __future__ import annotations
 
@@ -12,293 +12,296 @@ from typing import Any, Iterable
 
 
 @dataclass(frozen=True)
-class MM1Parameters:
-    arrival_rate: float
-    service_rate: float
-    simulation_time: float
-    queue_capacity: int | None = None
-    seed: int | None = None
+class ParametrosMM1:
+    tasa_arribo: float
+    tasa_servicio: float
+    tiempo_simulacion: float
+    capacidad_cola: int | None = None
+    semilla: int | None = None
 
 
 @dataclass
-class MM1Result:
-    parameters: MM1Parameters
-    total_arrivals: int
-    accepted_arrivals: int
-    rejected_arrivals: int
-    completed_customers: int
-    average_number_in_system: float
-    average_number_in_queue: float
-    average_time_in_system: float | None
-    average_time_in_queue: float | None
-    server_utilization: float
-    denial_probability: float
-    queue_length_time_probabilities: dict[int, float]
-    time_series: list[dict[str, Any]]
+class ResultadoMM1:
+    parametros: ParametrosMM1
+    clientes_generados: int
+    clientes_aceptados: int
+    clientes_rechazados: int
+    clientes_atendidos: int
+    promedio_clientes_sistema: float
+    promedio_clientes_cola: float
+    tiempo_promedio_sistema: float | None
+    tiempo_promedio_cola: float | None
+    utilizacion_servidor: float
+    probabilidad_denegacion: float
+    probabilidades_tiempo_longitud_cola: dict[int, float]
+    serie_temporal: list[dict[str, Any]]
 
-    def metrics_row(self) -> dict[str, Any]:
-        params = self.parameters
+    def fila_metricas(self) -> dict[str, Any]:
+        parametros = self.parametros
         return {
-            "seed": params.seed,
-            "arrival_rate": params.arrival_rate,
-            "service_rate": params.service_rate,
-            "rho": params.arrival_rate / params.service_rate,
-            "simulation_time": params.simulation_time,
-            "queue_capacity": (
-                "infinite" if params.queue_capacity is None else params.queue_capacity
+            "semilla": parametros.semilla,
+            "tasa_arribo": parametros.tasa_arribo,
+            "tasa_servicio": parametros.tasa_servicio,
+            "rho": parametros.tasa_arribo / parametros.tasa_servicio,
+            "tiempo_simulacion": parametros.tiempo_simulacion,
+            "capacidad_cola": (
+                "infinita" if parametros.capacidad_cola is None else parametros.capacidad_cola
             ),
-            "total_arrivals": self.total_arrivals,
-            "accepted_arrivals": self.accepted_arrivals,
-            "rejected_arrivals": self.rejected_arrivals,
-            "completed_customers": self.completed_customers,
-            "average_number_in_system": self.average_number_in_system,
-            "average_number_in_queue": self.average_number_in_queue,
-            "average_time_in_system": self.average_time_in_system,
-            "average_time_in_queue": self.average_time_in_queue,
-            "server_utilization": self.server_utilization,
-            "denial_probability": self.denial_probability,
+            "clientes_generados": self.clientes_generados,
+            "clientes_aceptados": self.clientes_aceptados,
+            "clientes_rechazados": self.clientes_rechazados,
+            "clientes_atendidos": self.clientes_atendidos,
+            "promedio_clientes_sistema": self.promedio_clientes_sistema,
+            "promedio_clientes_cola": self.promedio_clientes_cola,
+            "tiempo_promedio_sistema": self.tiempo_promedio_sistema,
+            "tiempo_promedio_cola": self.tiempo_promedio_cola,
+            "utilizacion_servidor": self.utilizacion_servidor,
+            "probabilidad_denegacion": self.probabilidad_denegacion,
         }
 
 
-def simulate_mm1(
-    parameters: MM1Parameters,
-    record_time_series: bool = True,
-) -> MM1Result:
-    """Simulate an M/M/1 queue for a fixed horizon."""
+def simular_mm1(
+    parametros: ParametrosMM1,
+    registrar_serie_temporal: bool = True,
+) -> ResultadoMM1:
+    """Simula una cola M/M/1 durante un horizonte fijo."""
 
-    _validate_parameters(parameters)
+    _validar_parametros(parametros)
 
-    rng = random.Random(parameters.seed)
-    queue: deque[float] = deque()
-    clock = 0.0
-    next_arrival = rng.expovariate(parameters.arrival_rate)
-    next_departure = math.inf
+    generador = random.Random(parametros.semilla)
+    cola: deque[float] = deque()
+    reloj = 0.0
+    proxima_llegada = generador.expovariate(parametros.tasa_arribo)
+    proxima_salida = math.inf
 
-    server_busy = False
-    current_customer_arrival: float | None = None
-    current_service_start: float | None = None
+    servidor_ocupado = False
+    llegada_cliente_actual: float | None = None
+    inicio_servicio_actual: float | None = None
 
-    total_arrivals = 0
-    accepted_arrivals = 0
-    rejected_arrivals = 0
-    completed_customers = 0
+    clientes_generados = 0
+    clientes_aceptados = 0
+    clientes_rechazados = 0
+    clientes_atendidos = 0
 
-    area_number_in_system = 0.0
-    area_number_in_queue = 0.0
-    busy_time = 0.0
-    queue_time_by_length: dict[int, float] = defaultdict(float)
+    area_clientes_sistema = 0.0
+    area_clientes_cola = 0.0
+    tiempo_ocupado = 0.0
+    tiempo_cola_por_longitud: dict[int, float] = defaultdict(float)
 
-    total_time_in_system = 0.0
-    total_time_in_queue = 0.0
-    time_series: list[dict[str, Any]] = []
+    tiempo_total_sistema = 0.0
+    tiempo_total_cola = 0.0
+    serie_temporal: list[dict[str, Any]] = []
 
-    def snapshot(event: str) -> None:
-        if not record_time_series:
+    def registrar_estado(evento: str) -> None:
+        if not registrar_serie_temporal:
             return
-        queue_length = len(queue)
-        time_series.append(
+        longitud_cola = len(cola)
+        serie_temporal.append(
             {
-                "time": clock,
-                "event": event,
-                "customers_in_system": queue_length + int(server_busy),
-                "customers_in_queue": queue_length,
-                "server_busy": int(server_busy),
-                "total_arrivals": total_arrivals,
-                "rejected_arrivals": rejected_arrivals,
-                "completed_customers": completed_customers,
+                "tiempo": reloj,
+                "evento": evento,
+                "clientes_sistema": longitud_cola + int(servidor_ocupado),
+                "clientes_cola": longitud_cola,
+                "servidor_ocupado": int(servidor_ocupado),
+                "clientes_generados": clientes_generados,
+                "clientes_rechazados": clientes_rechazados,
+                "clientes_atendidos": clientes_atendidos,
             }
         )
 
-    def accumulate(until: float) -> None:
-        nonlocal area_number_in_system
-        nonlocal area_number_in_queue
-        nonlocal busy_time
-        nonlocal clock
+    def acumular_hasta(instante: float) -> None:
+        nonlocal area_clientes_sistema
+        nonlocal area_clientes_cola
+        nonlocal tiempo_ocupado
+        nonlocal reloj
 
-        elapsed = until - clock
-        if elapsed < -1e-12:
-            raise RuntimeError("simulation clock moved backwards")
-        if elapsed <= 0.0:
-            clock = until
+        transcurrido = instante - reloj
+        if transcurrido < -1e-12:
+            raise RuntimeError("el reloj de simulacion retrocedio")
+        if transcurrido <= 0.0:
+            reloj = instante
             return
 
-        queue_length = len(queue)
-        system_length = queue_length + int(server_busy)
+        longitud_cola = len(cola)
+        longitud_sistema = longitud_cola + int(servidor_ocupado)
 
-        area_number_in_system += system_length * elapsed
-        area_number_in_queue += queue_length * elapsed
-        busy_time += int(server_busy) * elapsed
-        queue_time_by_length[queue_length] += elapsed
-        clock = until
+        area_clientes_sistema += longitud_sistema * transcurrido
+        area_clientes_cola += longitud_cola * transcurrido
+        tiempo_ocupado += int(servidor_ocupado) * transcurrido
+        tiempo_cola_por_longitud[longitud_cola] += transcurrido
+        reloj = instante
 
-    snapshot("start")
+    registrar_estado("inicio")
 
     while True:
-        event_time = min(next_arrival, next_departure)
-        if event_time > parameters.simulation_time:
-            accumulate(parameters.simulation_time)
+        instante_evento = min(proxima_llegada, proxima_salida)
+        if instante_evento > parametros.tiempo_simulacion:
+            acumular_hasta(parametros.tiempo_simulacion)
             break
 
-        accumulate(event_time)
+        acumular_hasta(instante_evento)
 
-        if next_departure <= next_arrival:
-            if current_customer_arrival is None or current_service_start is None:
-                raise RuntimeError("departure scheduled with no customer in service")
+        if proxima_salida <= proxima_llegada:
+            if llegada_cliente_actual is None or inicio_servicio_actual is None:
+                raise RuntimeError("salida agendada sin cliente en servicio")
 
-            completed_customers += 1
-            total_time_in_system += clock - current_customer_arrival
-            total_time_in_queue += current_service_start - current_customer_arrival
+            clientes_atendidos += 1
+            tiempo_total_sistema += reloj - llegada_cliente_actual
+            tiempo_total_cola += inicio_servicio_actual - llegada_cliente_actual
 
-            if queue:
-                current_customer_arrival = queue.popleft()
-                current_service_start = clock
-                next_departure = clock + rng.expovariate(parameters.service_rate)
-                server_busy = True
+            if cola:
+                llegada_cliente_actual = cola.popleft()
+                inicio_servicio_actual = reloj
+                proxima_salida = reloj + generador.expovariate(parametros.tasa_servicio)
+                servidor_ocupado = True
             else:
-                current_customer_arrival = None
-                current_service_start = None
-                next_departure = math.inf
-                server_busy = False
+                llegada_cliente_actual = None
+                inicio_servicio_actual = None
+                proxima_salida = math.inf
+                servidor_ocupado = False
 
-            snapshot("departure")
+            registrar_estado("salida")
             continue
 
-        total_arrivals += 1
-        next_arrival = clock + rng.expovariate(parameters.arrival_rate)
+        clientes_generados += 1
+        proxima_llegada = reloj + generador.expovariate(parametros.tasa_arribo)
 
-        if not server_busy:
-            accepted_arrivals += 1
-            server_busy = True
-            current_customer_arrival = clock
-            current_service_start = clock
-            next_departure = clock + rng.expovariate(parameters.service_rate)
-            snapshot("arrival_service_start")
+        if not servidor_ocupado:
+            clientes_aceptados += 1
+            servidor_ocupado = True
+            llegada_cliente_actual = reloj
+            inicio_servicio_actual = reloj
+            proxima_salida = reloj + generador.expovariate(parametros.tasa_servicio)
+            registrar_estado("llegada_inicio_servicio")
             continue
 
         if (
-            parameters.queue_capacity is None
-            or len(queue) < parameters.queue_capacity
+            parametros.capacidad_cola is None
+            or len(cola) < parametros.capacidad_cola
         ):
-            accepted_arrivals += 1
-            queue.append(clock)
-            snapshot("arrival_queue")
+            clientes_aceptados += 1
+            cola.append(reloj)
+            registrar_estado("llegada_a_cola")
             continue
 
-        rejected_arrivals += 1
-        snapshot("arrival_rejected")
+        clientes_rechazados += 1
+        registrar_estado("llegada_rechazada")
 
-    average_time_in_system = (
-        total_time_in_system / completed_customers
-        if completed_customers > 0
+    tiempo_promedio_sistema = (
+        tiempo_total_sistema / clientes_atendidos
+        if clientes_atendidos > 0
         else None
     )
-    average_time_in_queue = (
-        total_time_in_queue / completed_customers
-        if completed_customers > 0
+    tiempo_promedio_cola = (
+        tiempo_total_cola / clientes_atendidos
+        if clientes_atendidos > 0
         else None
     )
 
-    return MM1Result(
-        parameters=parameters,
-        total_arrivals=total_arrivals,
-        accepted_arrivals=accepted_arrivals,
-        rejected_arrivals=rejected_arrivals,
-        completed_customers=completed_customers,
-        average_number_in_system=area_number_in_system
-        / parameters.simulation_time,
-        average_number_in_queue=area_number_in_queue
-        / parameters.simulation_time,
-        average_time_in_system=average_time_in_system,
-        average_time_in_queue=average_time_in_queue,
-        server_utilization=busy_time / parameters.simulation_time,
-        denial_probability=(
-            rejected_arrivals / total_arrivals if total_arrivals > 0 else 0.0
+    return ResultadoMM1(
+        parametros=parametros,
+        clientes_generados=clientes_generados,
+        clientes_aceptados=clientes_aceptados,
+        clientes_rechazados=clientes_rechazados,
+        clientes_atendidos=clientes_atendidos,
+        promedio_clientes_sistema=area_clientes_sistema
+        / parametros.tiempo_simulacion,
+        promedio_clientes_cola=area_clientes_cola
+        / parametros.tiempo_simulacion,
+        tiempo_promedio_sistema=tiempo_promedio_sistema,
+        tiempo_promedio_cola=tiempo_promedio_cola,
+        utilizacion_servidor=tiempo_ocupado / parametros.tiempo_simulacion,
+        probabilidad_denegacion=(
+            clientes_rechazados / clientes_generados if clientes_generados > 0 else 0.0
         ),
-        queue_length_time_probabilities={
-            queue_length: duration / parameters.simulation_time
-            for queue_length, duration in sorted(queue_time_by_length.items())
+        probabilidades_tiempo_longitud_cola={
+            longitud_cola: duracion / parametros.tiempo_simulacion
+            for longitud_cola, duracion in sorted(tiempo_cola_por_longitud.items())
         },
-        time_series=time_series,
+        serie_temporal=serie_temporal,
     )
 
 
-def write_metrics_csv(results: Iterable[MM1Result], path: str | Path) -> None:
-    rows = [result.metrics_row() for result in results]
-    if not rows:
+def escribir_metricas_csv(
+    resultados: Iterable[ResultadoMM1],
+    ruta: str | Path,
+) -> None:
+    filas = [resultado.fila_metricas() for resultado in resultados]
+    if not filas:
         return
 
-    output_path = Path(path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w", newline="", encoding="utf-8") as csv_file:
-        writer = csv.DictWriter(
-            csv_file,
-            fieldnames=list(rows[0].keys()),
+    ruta_salida = Path(ruta)
+    ruta_salida.parent.mkdir(parents=True, exist_ok=True)
+    with ruta_salida.open("w", newline="", encoding="utf-8") as archivo_csv:
+        escritor = csv.DictWriter(
+            archivo_csv,
+            fieldnames=list(filas[0].keys()),
             lineterminator="\n",
         )
-        writer.writeheader()
-        writer.writerows(rows)
+        escritor.writeheader()
+        escritor.writerows(filas)
 
 
-def write_queue_probabilities_csv(
-    results: Iterable[MM1Result],
-    path: str | Path,
+def escribir_probabilidades_cola_csv(
+    resultados: Iterable[ResultadoMM1],
+    ruta: str | Path,
 ) -> None:
-    rows: list[dict[str, Any]] = []
-    for result in results:
-        params = result.parameters
-        for queue_length, probability in result.queue_length_time_probabilities.items():
-            rows.append(
+    filas: list[dict[str, Any]] = []
+    for resultado in resultados:
+        parametros = resultado.parametros
+        for longitud_cola, probabilidad in resultado.probabilidades_tiempo_longitud_cola.items():
+            filas.append(
                 {
-                    "seed": params.seed,
-                    "arrival_rate": params.arrival_rate,
-                    "service_rate": params.service_rate,
-                    "queue_capacity": (
-                        "infinite"
-                        if params.queue_capacity is None
-                        else params.queue_capacity
+                    "semilla": parametros.semilla,
+                    "tasa_arribo": parametros.tasa_arribo,
+                    "tasa_servicio": parametros.tasa_servicio,
+                    "capacidad_cola": (
+                        "infinita"
+                        if parametros.capacidad_cola is None
+                        else parametros.capacidad_cola
                     ),
-                    "queue_length": queue_length,
-                    "probability": probability,
+                    "longitud_cola": longitud_cola,
+                    "probabilidad": probabilidad,
                 }
             )
 
-    if not rows:
+    if not filas:
         return
 
-    output_path = Path(path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w", newline="", encoding="utf-8") as csv_file:
-        writer = csv.DictWriter(
-            csv_file,
-            fieldnames=list(rows[0].keys()),
+    ruta_salida = Path(ruta)
+    ruta_salida.parent.mkdir(parents=True, exist_ok=True)
+    with ruta_salida.open("w", newline="", encoding="utf-8") as archivo_csv:
+        escritor = csv.DictWriter(
+            archivo_csv,
+            fieldnames=list(filas[0].keys()),
             lineterminator="\n",
         )
-        writer.writeheader()
-        writer.writerows(rows)
+        escritor.writeheader()
+        escritor.writerows(filas)
 
 
-def write_time_series_csv(result: MM1Result, path: str | Path) -> None:
-    if not result.time_series:
+def escribir_serie_temporal_csv(resultado: ResultadoMM1, ruta: str | Path) -> None:
+    if not resultado.serie_temporal:
         return
 
-    output_path = Path(path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w", newline="", encoding="utf-8") as csv_file:
-        writer = csv.DictWriter(
-            csv_file,
-            fieldnames=list(result.time_series[0].keys()),
+    ruta_salida = Path(ruta)
+    ruta_salida.parent.mkdir(parents=True, exist_ok=True)
+    with ruta_salida.open("w", newline="", encoding="utf-8") as archivo_csv:
+        escritor = csv.DictWriter(
+            archivo_csv,
+            fieldnames=list(resultado.serie_temporal[0].keys()),
             lineterminator="\n",
         )
-        writer.writeheader()
-        writer.writerows(result.time_series)
+        escritor.writeheader()
+        escritor.writerows(resultado.serie_temporal)
 
 
-def _validate_parameters(parameters: MM1Parameters) -> None:
-    if parameters.arrival_rate <= 0:
-        raise ValueError("arrival_rate must be greater than zero")
-    if parameters.service_rate <= 0:
-        raise ValueError("service_rate must be greater than zero")
-    if parameters.simulation_time <= 0:
-        raise ValueError("simulation_time must be greater than zero")
-    if parameters.queue_capacity is not None and parameters.queue_capacity < 0:
-        raise ValueError("queue_capacity must be zero or greater")
+def _validar_parametros(parametros: ParametrosMM1) -> None:
+    if parametros.tasa_arribo <= 0:
+        raise ValueError("tasa_arribo debe ser mayor que cero")
+    if parametros.tasa_servicio <= 0:
+        raise ValueError("tasa_servicio debe ser mayor que cero")
+    if parametros.tiempo_simulacion <= 0:
+        raise ValueError("tiempo_simulacion debe ser mayor que cero")
+    if parametros.capacidad_cola is not None and parametros.capacidad_cola < 0:
+        raise ValueError("capacidad_cola debe ser cero o mayor")

@@ -1,4 +1,4 @@
-"""Run the full M/M/1 experiment matrix from the TP configuration."""
+"""Ejecuta la matriz completa de experimentos M/M/1."""
 
 from __future__ import annotations
 
@@ -6,44 +6,48 @@ import argparse
 from pathlib import Path
 
 from src.mm1.experiments import (
-    load_experiment_config,
-    run_experiments,
-    write_experiment_outputs,
+    cargar_configuracion_experimentos,
+    escribir_salidas_experimentos,
+    ejecutar_experimentos,
 )
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Run all M/M/1 experiments.")
+def principal() -> None:
+    parser = argparse.ArgumentParser(description="Ejecuta todos los experimentos M/M/1.")
     parser.add_argument(
         "--config",
+        "--configuracion",
+        dest="configuracion",
         default="config/default_parameters.json",
-        help="Path to the JSON configuration file.",
+        help="Ruta al archivo JSON de configuracion.",
     )
     parser.add_argument(
         "--output-dir",
+        "--directorio-salida",
+        dest="directorio_salida",
         default="results/mm1/experiments",
-        help="Directory where experiment CSV files will be written.",
+        help="Directorio donde se escriben los CSV de experimentos.",
     )
-    args = parser.parse_args()
+    argumentos = parser.parse_args()
 
-    config = load_experiment_config(Path(args.config))
-    results = run_experiments(config)
-    write_experiment_outputs(
-        results,
-        Path(args.output_dir),
-        config.max_queue_probability_length,
+    configuracion = cargar_configuracion_experimentos(Path(argumentos.configuracion))
+    resultados = ejecutar_experimentos(configuracion)
+    escribir_salidas_experimentos(
+        resultados,
+        Path(argumentos.directorio_salida),
+        configuracion.max_longitud_probabilidad_cola,
     )
 
-    experiment_count = (
-        len(config.arrival_rate_factors)
-        * len(config.queue_capacities)
-        * config.replications
+    cantidad_corridas = (
+        len(configuracion.factores_tasa_arribo)
+        * len(configuracion.capacidades_cola)
+        * configuracion.replicas
     )
-    print("M/M/1 experiments completed")
-    print(f"  experiment runs: {experiment_count}")
-    print(f"  output directory: {args.output_dir}")
-    print("  note: infinite queue cases with rho >= 1 are marked unstable")
+    print("Experimentos M/M/1 completados")
+    print(f"  corridas experimentales: {cantidad_corridas}")
+    print(f"  directorio de salida: {argumentos.directorio_salida}")
+    print("  nota: los casos de cola infinita con rho >= 1 se marcan sin regimen estacionario")
 
 
 if __name__ == "__main__":
-    main()
+    principal()
