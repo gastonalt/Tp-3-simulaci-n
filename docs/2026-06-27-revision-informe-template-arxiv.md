@@ -32,6 +32,7 @@ Antes de editar se leyeron todos los documentos existentes en `docs/`.
 - Se actualizo `report/sections/04-resultados-mm1.tex` para incluir la nueva tabla.
 - Se actualizo `report/tp3_mm1_v1.zip` para que el paquete de Overleaf incluya el `arxiv.sty`, el `main.tex`, las secciones, tablas y figuras vigentes.
 - Se corrigio el formato de las notas bajo las tablas de probabilidades para que no queden al costado del cuadro. Las notas ahora se emiten como un bloque en `minipage` despues de `\par\smallskip`.
+- Se agrego la seccion `report/sections/99-repositorio-proyecto.tex` con el enlace provisorio al repositorio del proyecto: `https://github.com/gastonalt/Tp-3-simulaci-n`.
 
 ## Revision teorica
 
@@ -64,6 +65,7 @@ Se ejecuto una validacion cruzada con Python que verifico:
 - No hay referencias `\ref{...}` sin `\label{...}`.
 - El ZIP actualizado contiene `arxiv.sty`, `main.tex`, `sections/`, `tables/` y `figures/`, incluida `tables/mm1_infinite_queue_probabilities.tex`.
 - Las notas de `report/tables/mm1_infinite_queue_probabilities.tex` y `report/tables/mm1_denial_probability.tex` quedan debajo del `tabular`, no en la misma linea.
+- El informe incluye la nueva seccion de repositorio mediante `\input{sections/99-repositorio-proyecto}`.
 
 Tambien se ejecuto:
 

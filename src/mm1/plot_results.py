@@ -49,6 +49,25 @@ def principal() -> None:
         default="figures/mm1",
         help="Directorio donde se escriben las figuras SVG.",
     )
+    parser.add_argument(
+        "--timeseries",
+        "--serie-temporal",
+        dest="serie_temporal",
+        default="results/mm1/smoke_timeseries/mm1_single_timeseries.csv",
+        help="CSV con una serie temporal representativa de M/M/1.",
+    )
+    parser.add_argument(
+        "--report-output-dir",
+        "--directorio-informe",
+        dest="directorio_informe",
+        default="report/figures/mm1",
+        help="Directorio donde se escribe la copia PDF temporal para el informe.",
+    )
+    parser.add_argument(
+        "--sin-pdf-informe",
+        action="store_true",
+        help="No genera copia PDF temporal para el informe.",
+    )
     argumentos = parser.parse_args()
 
     directorio_entrada = Path(argumentos.directorio_entrada)
@@ -58,6 +77,20 @@ def principal() -> None:
     filas_resumen = leer_filas_csv(directorio_entrada / "mm1_summary.csv")
     _graficar_metricas_cola_infinita(filas_resumen, directorio_salida)
     _graficar_probabilidad_denegacion(filas_resumen, directorio_salida)
+    ruta_temporal = Path(argumentos.serie_temporal)
+    if ruta_temporal.exists():
+        series_temporales = _series_temporales_clientes(leer_filas_csv(ruta_temporal))
+        _graficar_evolucion_temporal(
+            series_temporales,
+            directorio_salida / "mm1_temporal_clientes_rho_075.svg",
+        )
+        if not argumentos.sin_pdf_informe:
+            _intentar_exportar_pdf_temporal(
+                series_temporales,
+                Path(argumentos.directorio_informe) / "mm1_temporal_clientes_rho_075.pdf",
+            )
+    else:
+        print(f"  aviso: no se encontro serie temporal {ruta_temporal}")
 
     print("Figuras M/M/1 generadas")
     print(f"  directorio de salida: {directorio_salida}")
@@ -158,6 +191,41 @@ def _graficar_probabilidad_denegacion(
     )
 
 
+def _series_temporales_clientes(
+    filas_temporales: list[dict[str, str]],
+) -> list[dict]:
+    return [
+        {
+            "etiqueta": "Clientes en sistema",
+            "puntos": [
+                (float(fila["tiempo"]), float(fila["clientes_sistema"]))
+                for fila in filas_temporales
+            ],
+            "color": COLORES[0],
+            "guiones": "",
+        },
+        {
+            "etiqueta": "Clientes en cola",
+            "puntos": [
+                (float(fila["tiempo"]), float(fila["clientes_cola"]))
+                for fila in filas_temporales
+            ],
+            "color": COLORES[1],
+            "guiones": "6 4",
+        },
+    ]
+
+
+def _graficar_evolucion_temporal(series: list[dict], ruta: Path) -> None:
+    _escribir_grafico_lineas_temporales(
+        series,
+        ruta,
+        titulo="M/M/1 - Evolucion temporal de clientes (rho=0.75)",
+        etiqueta_x="Tiempo simulado (horas)",
+        etiqueta_y="Clientes",
+    )
+
+
 def _escribir_grafico_lineas_xy(
     series: list[dict],
     ruta: Path,
@@ -241,6 +309,146 @@ def _escribir_grafico_lineas_categorias(
         grafico.dibujar_puntos(puntos, serie["color"])
     grafico.dibujar_leyenda(series)
     grafico.finalizar()
+
+
+def _escribir_grafico_lineas_temporales(
+    series: list[dict],
+    ruta: Path,
+    titulo: str,
+    etiqueta_x: str,
+    etiqueta_y: str,
+) -> None:
+    todos_los_puntos = [
+        punto
+        for serie in series
+        for punto in serie["puntos"]
+    ]
+    if not todos_los_puntos:
+        return
+
+    valores_x = [punto[0] for punto in todos_los_puntos]
+    valores_y = [punto[1] for punto in todos_los_puntos]
+    x_min, x_max = min(valores_x), max(valores_x)
+    y_min, y_max = 0.0, max(valores_y)
+    if y_max == y_min:
+        y_max = y_min + 1.0
+
+    grafico = _Grafico(ruta, titulo, etiqueta_x, etiqueta_y)
+    grafico.comenzar()
+    grafico.dibujar_ejes(_etiquetas_temporales(x_min, x_max), y_min, y_max)
+    for serie in series:
+        puntos = [
+            (
+                grafico.escalar_x(punto[0], x_min, x_max),
+                grafico.escalar_y(punto[1], y_min, y_max),
+            )
+            for punto in serie["puntos"]
+        ]
+        grafico.dibujar_linea(puntos, serie["color"], serie["guiones"])
+    grafico.dibujar_leyenda(series)
+    grafico.finalizar()
+
+
+def _intentar_exportar_pdf_temporal(series: list[dict], ruta_pdf: Path) -> None:
+    try:
+        from reportlab.lib import colors
+        from reportlab.pdfgen import canvas
+    except ImportError:
+        print("  aviso: reportlab no esta disponible; no se genero PDF temporal")
+        return
+
+    todos_los_puntos = [
+        punto
+        for serie in series
+        for punto in serie["puntos"]
+    ]
+    if not todos_los_puntos:
+        return
+
+    ruta_pdf.parent.mkdir(parents=True, exist_ok=True)
+    ancho = _Grafico.ancho
+    alto = _Grafico.alto
+    izquierda = _Grafico.izquierda
+    derecha = ancho - _Grafico.derecha
+    abajo = _Grafico.abajo
+    arriba = alto - _Grafico.arriba
+    ancho_trazado = derecha - izquierda
+    alto_trazado = arriba - abajo
+    x_min = min(punto[0] for punto in todos_los_puntos)
+    x_max = max(punto[0] for punto in todos_los_puntos)
+    y_min = 0.0
+    y_max = max(punto[1] for punto in todos_los_puntos) or 1.0
+
+    lienzo = canvas.Canvas(str(ruta_pdf), pagesize=(ancho, alto))
+    lienzo.setFillColor(colors.white)
+    lienzo.rect(0, 0, ancho, alto, stroke=0, fill=1)
+    lienzo.setFillColor(colors.black)
+    lienzo.setFont("Helvetica-Bold", 22)
+    lienzo.drawCentredString(
+        ancho / 2,
+        alto - 32,
+        "M/M/1 - Evolucion temporal de clientes (rho=0.75)",
+    )
+
+    lienzo.setStrokeColor(colors.HexColor("#e6e6e6"))
+    lienzo.setLineWidth(1)
+    for indice in range(6):
+        fraccion = indice / 5
+        y = abajo + fraccion * alto_trazado
+        valor = y_min + fraccion * (y_max - y_min)
+        lienzo.line(izquierda, y, derecha, y)
+        lienzo.setFont("Helvetica", 12)
+        lienzo.setFillColor(colors.black)
+        lienzo.drawRightString(izquierda - 10, y - 4, f"{valor:.3g}")
+        lienzo.setStrokeColor(colors.HexColor("#e6e6e6"))
+
+    lienzo.setStrokeColor(colors.HexColor("#222222"))
+    lienzo.setLineWidth(1.5)
+    lienzo.line(izquierda, abajo, derecha, abajo)
+    lienzo.line(izquierda, abajo, izquierda, arriba)
+
+    for indice, etiqueta in enumerate(_etiquetas_temporales(x_min, x_max)):
+        x = izquierda + indice / 4 * ancho_trazado
+        lienzo.setFont("Helvetica", 12)
+        lienzo.drawCentredString(x, abajo - 24, etiqueta)
+    lienzo.setFont("Helvetica", 14)
+    lienzo.drawCentredString(izquierda + ancho_trazado / 2, 24, "Tiempo simulado (horas)")
+
+    lienzo.saveState()
+    lienzo.translate(26, abajo + alto_trazado / 2)
+    lienzo.rotate(90)
+    lienzo.drawCentredString(0, 0, "Clientes")
+    lienzo.restoreState()
+
+    for indice, serie in enumerate(series):
+        color = colors.HexColor(serie["color"])
+        lienzo.setStrokeColor(color)
+        lienzo.setLineWidth(2.5)
+        if serie["guiones"]:
+            lienzo.setDash([6, 4])
+        else:
+            lienzo.setDash()
+        camino = lienzo.beginPath()
+        for punto_indice, (x_valor, y_valor) in enumerate(serie["puntos"]):
+            x = izquierda + (x_valor - x_min) / (x_max - x_min) * ancho_trazado
+            y = abajo + (y_valor - y_min) / (y_max - y_min) * alto_trazado
+            if punto_indice == 0:
+                camino.moveTo(x, y)
+            else:
+                camino.lineTo(x, y)
+        lienzo.drawPath(camino, stroke=1, fill=0)
+        lienzo.setDash()
+
+        y_leyenda = arriba - 8 - indice * 24
+        x_leyenda = derecha + 32
+        lienzo.setStrokeColor(color)
+        lienzo.line(x_leyenda, y_leyenda, x_leyenda + 28, y_leyenda)
+        lienzo.setFillColor(colors.black)
+        lienzo.setFont("Helvetica", 13)
+        lienzo.drawString(x_leyenda + 38, y_leyenda - 4, serie["etiqueta"])
+
+    lienzo.showPage()
+    lienzo.save()
 
 
 class _Grafico:
@@ -426,6 +634,13 @@ def _unicos_preservando_orden(valores: list[str]) -> list[str]:
             vistos.add(valor)
             salida.append(valor)
     return salida
+
+
+def _etiquetas_temporales(x_min: float, x_max: float) -> list[str]:
+    return [
+        f"{x_min + (x_max - x_min) * fraccion / 4:.0f}"
+        for fraccion in range(5)
+    ]
 
 
 def _escapar(valor: str) -> str:

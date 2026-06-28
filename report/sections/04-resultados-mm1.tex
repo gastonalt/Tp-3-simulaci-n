@@ -1,4 +1,4 @@
-\section{Resultados preliminares M/M/1}
+\section{Resultados M/M/1}
 
 Los resultados de Python se exportaron a \texttt{results/mm1/experiments/}. El archivo \texttt{mm1\_runs.csv} contiene una fila por corrida, mientras que \texttt{mm1\_summary.csv} y \texttt{mm1\_summary\_long.csv} contienen resumenes por experimento.
 
@@ -68,4 +68,15 @@ Los graficos originales se generaron en SVG y luego se copiaron al informe como 
     \includegraphics[width=0.82\textwidth]{mm1_denial_probability_by_capacity.pdf}
     \caption{Probabilidad de denegacion de servicio en colas finitas para distintas capacidades de espera $B$.}
     \label{fig:mm1-denial-probability}
+\end{figure}
+
+\subsection{Evolucion temporal}
+
+Ademas de las medidas finales, se genero una corrida representativa de cola infinita con $\rho=0.75$ y horizonte de $100$ horas para observar la evolucion del estado del sistema. Esta serie temporal no reemplaza las estimaciones finales de las tablas, que usan $10000$ horas y $10$ replicas, sino que muestra visualmente la dinamica de llegadas, esperas y salidas a lo largo del tiempo.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.82\textwidth]{mm1_temporal_clientes_rho_075.pdf}
+    \caption{Evolucion temporal de clientes en sistema y clientes en cola para una corrida representativa con $\rho=0.75$.}
+    \label{fig:mm1-temporal-clientes}
 \end{figure}
